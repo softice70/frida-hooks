@@ -20,6 +20,7 @@ Frida-Hooks
 安装
 ------------
 
+* `pip install frida-hooks`
 * `python setup.py install`
 
 依赖
@@ -34,7 +35,7 @@ Frida-Hooks
 $ python .\frida_hook.py
 ```
 - 设置应用启动后立即挂起，然后注入钩子的模式
-    - 参数：  -S, --suspend         suspend during startup
+    - 参数：  -S, --spawn         spawn mode of Frida, that suspend app during startup
     ```base
     $ python .\frida_hook.py com.xxx.foo -S --hook_class --class com.xxx.foo.community.mgr.CommunityMgr
     ```
