@@ -1,13 +1,13 @@
 Frida-Hooks
 ========
-Frida是一个面向开发人员、逆向工程师和安全研究人员的动态插桩工具包。[官网：frida.re](https://github.com/frida/frida)
-[Frida-Hooks]()则是在frida平台上集成了一些常用的脚本，从而使调试更加高效、易用。
+- Frida是一个面向开发人员、逆向工程师和安全研究人员的动态插桩工具包。[官网：frida.re](https://github.com/frida/frida)
+- [Frida-Hooks]()则是在frida平台上集成了一些常用的脚本，从而使调试更加高效、易用。
 
 主要功能
 --------
 - 自动启动frida-server
 - 自动启动应用程序，支持spawn模式
-- hook网络通讯
+- hook okhttp3网络通讯
 - hook指定的类的全部或部分方法
 - hook指定so的全部或部分函数
 - hook某应用的registerNatives函数
@@ -123,20 +123,21 @@ $ python .\frida_hook.py com.xxx.foo --dump_so_memory --module libxxx.so --offse
 #### 操作  
 - 运行状态中可以输入命令
 ```text
-    help        show this help message
-    options     print options
-    list        show hook list
-    config <file>       load the config file
-    disable <key>       set disable the hook item by key
-    enable <key>        set enable the hook item by key
-    remove <key>        remove the hook item by key
-    run [options]       run hook option, see also <options>
-        example: --hook_class --class com.xxx.xxx.xxxxxx.Classxxx
-                 --hook_func --class com.xxx.xxx.xxxxxx.Classxxx --func Funcxxx
-                 --hook_so_func --module libxxx.so --func getSign
-                 --hook_so_func --module libxxx.so --addr 0xedxxxxxx
-    resume      resume connection to phone
-    quit        quit
+  help          show this help message
+  options       print options
+  list          show hook list
+  config <file> load the config file
+  disable <key> set disable the hook item by key
+  enable <key>  set enable the hook item by key
+  remove <key>  remove the hook item by key
+  run [options] run hook option, see also <options>
+       example: --hook_class --class com.xxx.xxx.xxxxxx.Classxxx
+                --hook_func --class com.xxx.xxx.xxxxxx.Classxxx --func Funcxxx
+                --hook_so_func --module libxxx.so --func getSign
+                --hook_so_func --module libxxx.so --addr 0xedxxxxxx
+  restart       restart the hook session
+  cls           clear screen
+  quit          quit
 ```
 
 相关项目
