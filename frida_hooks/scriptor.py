@@ -138,7 +138,7 @@ class Scriptor:
                     print(f'Error: jscode not found in {file_script}!')
             else:
                 print(f'{Colors.warning}custom: --file_script must be set{Colors.reset}')
-        else:
+        elif cmd:
             keep_alive = False
             if cmd == 'list_so_func' or cmd == 'hook_so':
                 module = Scriptor._get_option(options, "module_name", '')

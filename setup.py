@@ -7,16 +7,16 @@
 
 from setuptools import setup, find_packages
 
-setup(name = "frida_hooks",
+setup(name = "frida-hooks",
     version = "0.9.0",
     description = "Dynamic instrumentation toolkits powered by Frida",
     author = "Ryan",
     author_email = "dawnsun@sina.com",
-    url = "",
+    url = "https://github.com/softice70/frida-hooks",
     packages = find_packages(),
     license='Apache License, Version 2.0',
     entry_points = {
-                   'console_scripts': ['frida_hooks=frida_hooks.main:main']
+                   'console_scripts': ['frida-hooks=frida_hooks.main:main']
                },
     package_data={
       'frida_hooks': [

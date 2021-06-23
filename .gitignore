@@ -3,8 +3,10 @@
 # builds
 build
 dist
+frida_hooks.egg-info
 
 # misc
 .svn
 .idea
 test
+com.*
