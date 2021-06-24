@@ -14,20 +14,30 @@ _frida_cmds = [
     {'func': 'list_process', 'is_option': True, 'help': 'list processes'},
     {'api': 'listClass', 'func': 'list_class', 'is_option': True, 'help': 'list classes of Java'},
     {'api': 'listSo', 'func': 'list_so', 'is_option': True, 'help': 'list so'},
-    {'api': 'listSoFunc', 'func': 'list_so_func', 'is_option': True, 'help': 'list all functions of the so, Parameters: --module'},
+    {'api': 'listSoFunc', 'func': 'list_so_func', 'is_option': True,
+     'help': 'list all functions of the so, Parameters: --module'},
     {'api': 'listThread', 'func': 'list_thread', 'is_option': True, 'help': 'list thread'},
-    {'api': 'hookFunc', 'func': 'hook_func', 'is_option': True, 'help': 'hook the method of one class, Parameters: --class, --func'},
-    {'api': 'hookClass', 'func': 'hook_class', 'is_option': True, 'help': 'hook all methods of one class, Parameters: --class'},
-    {'api': 'hookSoFunc', 'func': 'hook_so_func', 'is_option': True, 'help': 'hook the funtion of some module, Parameters: --module, (--func | --addr)'},
-    {'api': 'hookSo', 'func': 'hook_so', 'is_option': True, 'help': 'hook all funtions of some module, Parameters: --module'},
-    {'api': 'hookOkhttp3Execute', 'func': 'hook_okhttp3_execute', 'is_option': True, 'help': 'hook okHttp3.RealCall.execute, suggest to use when viewing request'},
-    {'api': 'hookOkhttp3Callserver', 'func': 'hook_okhttp3_CallServer', 'is_option': True, 'help': 'hook okhttp3.CallServerInterceptor, suggest to use when viewing response'},
-    {'api': 'hookIntercept', 'func': 'hook_intercept', 'is_option': True, 'help': 'hook the intercept() of some okhttp3 interceptor, Parameters: --class'},
-    {'api': 'hookRegisternatives', 'func': 'hook_RegisterNatives', 'is_option': True, 'help': 'hook the RegisterNatives function, please use --suspend together'},
+    {'api': 'hookFunc', 'func': 'hook_func', 'is_option': True,
+     'help': 'hook the method of one class, Parameters: --class, --func'},
+    {'api': 'hookClass', 'func': 'hook_class', 'is_option': True,
+     'help': 'hook all methods of one class, Parameters: --class'},
+    {'api': 'hookSoFunc', 'func': 'hook_so_func', 'is_option': True,
+     'help': 'hook the function of some module, Parameters: --module, (--func | --addr)'},
+    {'api': 'hookSo', 'func': 'hook_so', 'is_option': True,
+     'help': 'hook all functions of some module, Parameters: --module'},
+    {'api': 'hookOkhttp3Execute', 'func': 'hook_okhttp3_execute', 'is_option': True,
+     'help': 'hook okHttp3.RealCall.execute, suggest to use when viewing request'},
+    {'api': 'hookOkhttp3Callserver', 'func': 'hook_okhttp3_CallServer', 'is_option': True,
+     'help': 'hook okhttp3.CallServerInterceptor, suggest to use when viewing response'},
+    {'api': 'hookIntercept', 'func': 'hook_intercept', 'is_option': True,
+     'help': 'hook the intercept() of some okhttp3 interceptor, Parameters: --class'},
+    {'api': 'hookRegisternatives', 'func': 'hook_RegisterNatives', 'is_option': True,
+     'help': 'hook the RegisterNatives function, please use --suspend together'},
     {'api': 'dumpClass', 'func': 'dump_class', 'is_option': True, 'help': 'dump the class, Parameters: --class'},
     {'func': 'dump_so', 'is_option': True, 'help': 'dump so from memory to file, Parameters: --module'},
     {'func': 'dump_dex', 'is_option': True, 'help': 'dump dex from memory to file'},
-    {'api': 'dumpSoMemory', 'func': 'dump_so_memory', 'is_option': True, 'help': 'dump the memory of the module, Parameters: --module, --offset, --length'},
+    {'api': 'dumpSoMemory', 'func': 'dump_so_memory', 'is_option': True,
+     'help': 'dump the memory of the module, Parameters: --module, --offset, --length'},
     {'api': 'searchInMemory', 'func': 'search_in_memory', 'is_option': False},
     {'api': 'memoryDump', 'func': 'memory_dump', 'is_option': False},
     {'api': 'scanDex', 'func': 'scan_dex', 'is_option': False},
@@ -40,8 +50,10 @@ _script_params = [
     {'name': 'func_name', "option_name": 'func', 'type': 'string', 'default': '', 'help': 'the name of function'},
     {'name': 'addr', "option_name": 'addr', 'type': 'string', 'default': '', 'help': 'the address of function in memory'},
     {'name': 'offset', "option_name": 'offset', 'type': 'string', 'default': '0', 'help': 'the offset to base address'},
-    {'name': 'length', "option_name": 'length', 'type': 'string', 'default': '0', 'help': 'length of the memory to dump or save'},
-    {'name': 'deep_search', "option_name": 'deep_search', 'type': 'bool', 'default': False, 'help': 'enable deep search maybe detected more dex, but speed will be slower'},
+    {'name': 'length', "option_name": 'length', 'type': 'string', 'default': '0',
+     'help': 'length of the memory to dump or save'},
+    {'name': 'deep_search', "option_name": 'deep_search', 'type': 'bool', 'default': False,
+     'help': 'enable deep search maybe detected more dex, but speed will be slower'},
 ]
 
 _script_colors = [
@@ -123,9 +135,9 @@ class Scriptor:
     @staticmethod
     def prepare_script(options):
         script = None
-        cmd = Scriptor._get_option(options, "cmd")
+        cmd = Scriptor._get_option(options, "cmd", None)
         script_str = fun_on_msg = None
-        file_script = Scriptor._get_option(options, "file_script")
+        file_script = Scriptor._get_option(options, "file_script", None)
         if file_script:
             script_str, fun_on_msg = Scriptor.load_script_file(file_script)
         if cmd == 'custom':
@@ -149,7 +161,7 @@ class Scriptor:
                     params = {'module': module}
                     script = {'cmd': cmd, 'key': key, 'api_cmd': api_cmd, 'params': params}
                 else:
-                    print(f'{Colors.warning}{cmd}: --module must be set{Colors.reset}')
+                    print(f'{Colors.warning}Usage: --{cmd} --module <so_name>{Colors.reset}')
             elif cmd == 'dump_so':
                 module = Scriptor._get_option(options, "module_name", '')
                 if module != '':
@@ -159,7 +171,7 @@ class Scriptor:
                     params = {'module': module}
                     script = {'cmd': cmd, 'key': key, 'api_cmd': api_cmd, 'params': params}
                 else:
-                    print(f'{Colors.warning}{cmd}: --module must be set{Colors.reset}')
+                    print(f'{Colors.warning}Usage: --{cmd} --module <so_name>{Colors.reset}')
             elif cmd == 'dump_so_memory':
                 module = Scriptor._get_option(options, "module_name", '')
                 offset = Scriptor._get_option(options, "offset", '')
@@ -170,7 +182,7 @@ class Scriptor:
                     params = {'module': module, 'offset': offset, 'length': length}
                     script = {'cmd': cmd, 'key': key, 'api_cmd': api_cmd, 'params': params}
                 else:
-                    print(f'{Colors.warning}{cmd}: (--module, --offset, --length) must be set{Colors.reset}')
+                    print(f'{Colors.warning}Usage: --{cmd} --module <so_name> --offset <offset> --length <length>{Colors.reset}')
             elif cmd == 'hook_so_func':
                 module = Scriptor._get_option(options, "module_name", '')
                 func = Scriptor._get_option(options, "func_name", '')
@@ -182,7 +194,7 @@ class Scriptor:
                     params = {'module': module, 'func': func, 'addr': addr}
                     script = {'cmd': cmd, 'key': key, 'api_cmd': api_cmd, 'params': params}
                 else:
-                    print(f'{Colors.warning}{cmd}: (--module, (--func | --addr)) must be set{Colors.reset}')
+                    print(f'{Colors.warning}Usage: --{cmd} --module <so_name> <--func <func_name> | --addr <address>>{Colors.reset}')
             elif cmd == 'dump_class' or cmd == 'hook_class' or cmd == 'hook_intercept':
                 class_name = Scriptor._get_option(options, "class_name", '')
                 if class_name != '':
@@ -192,7 +204,7 @@ class Scriptor:
                     params = {'class': class_name}
                     script = {'cmd': cmd, 'key': key, 'api_cmd': api_cmd, 'params': params}
                 else:
-                    print(f'{Colors.warning}{cmd}: --class must be set{Colors.reset}')
+                    print(f'{Colors.warning}Usage: --{cmd} --class <class_name>{Colors.reset}')
             elif cmd == 'hook_func':
                 class_name = Scriptor._get_option(options, "class_name", '')
                 func = Scriptor._get_option(options, "func_name", '')
@@ -203,7 +215,7 @@ class Scriptor:
                     script = {'cmd': cmd, 'key': key, 'api_cmd': api_cmd, 'params': params}
                     keep_alive = True
                 else:
-                    print(f'{Colors.warning}{cmd}: (--class, --func) must be set{Colors.reset}')
+                    print(f'{Colors.warning}Usage: --{cmd} --class <class_name> --func <func_name>{Colors.reset}')
             else:
                 key = f"--{cmd}"
                 api_cmd = f'self._script.exports.{cmd}()'
@@ -440,7 +452,7 @@ class Scriptor:
         return script_str, fun_on_msg
 
     @staticmethod
-    def _get_option(options, item, default=None):
+    def _get_option(options, item, default=''):
         if isinstance(options, dict):
             if options['cf'].has_option(options['section'], item):
                 return options['cf'].get(options['section'], item)
@@ -449,10 +461,10 @@ class Scriptor:
         elif isinstance(options, list):
             return Scriptor._get_option_from_cmd(options, item, default)
         else:
-            return Scriptor._get_option_from_options(options, item)
+            return Scriptor._get_option_from_options(options, item, default)
     
     @staticmethod
-    def _get_option_from_cmd(cmd, item, default=None):
+    def _get_option_from_cmd(cmd, item, default=''):
         ret = default
         if cmd and len(cmd) > 1:
             if item == 'cmd':
@@ -462,12 +474,12 @@ class Scriptor:
                     print(f'{Colors.warning}invalidate parameter: {cmd[1]}{Colors.reset}')
             else:
                 param = item if item not in ['module_name', 'class_name', 'func_name'] else item[:-5]
-                ret = Scriptor._get_internal_cmd_param(cmd, param)
+                ret = Scriptor._get_internal_cmd_param(cmd, param, default)
         return ret
     
     @staticmethod
-    def _get_internal_cmd_param(cmd, param):
-        ret = None
+    def _get_internal_cmd_param(cmd, param, default=''):
+        ret = default
         param = '--' + param
         for i in range(len(cmd)):
             if cmd[i] == param and i + 1 < len(cmd):
@@ -475,8 +487,8 @@ class Scriptor:
         return ret
     
     @staticmethod
-    def _get_option_from_options(options, item):
-        ret = None
+    def _get_option_from_options(options, item, default=''):
+        ret = default
         if item == 'cmd':
             for item in _frida_cmds:
                 if "is_option" in item.keys() and item['is_option'] and getattr(options, item['func']):
@@ -485,7 +497,7 @@ class Scriptor:
                 ret = 'custom'
         else:
             ret = getattr(options, item)
-        return ret if ret != '' else None
+        return ret
 
     @staticmethod
     def load_scripts():
