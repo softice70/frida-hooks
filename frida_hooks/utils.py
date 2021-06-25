@@ -117,4 +117,62 @@ def set_exit_handler(sig, func):
     signal.signal(sig, func)
 
 
+def parse_request(data):
+    param_infos = []
+    for key in ['method', 'url', 'headers', 'body']:
+        if key != 'headers':
+            if len(data[key]) > 0:
+                param = f'{Colors.keyword}{key}{Colors.reset}: {data[key].strip()}'
+            else:
+                continue
+        else:
+            headers = data['headers'].strip().replace("\n", ", ")
+            param = f'{Colors.keyword}headers{Colors.reset}: {headers}'
+        param_infos.append(param)
+    return param_infos
+
+
+def parse_response(data):
+    response = data['response'].strip()[9:-1]
+    param_infos = []
+    while len(response) > 0:
+        param, response = __get_param_from_request(response)
+        param_infos.append(param)
+    if 'headers' in data.keys():
+        headers = data['headers'].strip().replace("\n", ", ")
+        param = f'{Colors.keyword}headers{Colors.reset}: {headers}'
+        param_infos.append(param)
+    if 'body' in data.keys() and len(data['body']) > 0:
+        param = f'{Colors.keyword}body{Colors.reset}: {data["body"].strip()}'
+        param_infos.append(param)
+    return param_infos
+
+
+def __get_param_from_request(request):
+    key, request = __get_key_from_request(request)
+    value, request = __get_value_from_request(request)
+    param = f'{Colors.keyword}{key}{Colors.reset}: {value}'
+    return param, request
+
+
+def __get_key_from_request(request):
+    idx = request.find("=")
+    key = request[:idx]
+    request = request[idx + 1:]
+    return key, request
+
+
+def __get_value_from_request(request):
+    if request[0] == '[':
+        start = 1
+        idx = request.find("],")
+        next_start = idx + 3 if idx >= 0 else -1
+    else:
+        start = 0
+        idx = request.find(",")
+        next_start = idx + 2 if idx >= 0 else -1
+    value = request[start:idx] if idx >= 0 else request[start:]
+    request = request[next_start:] if next_start > 0 else ''
+    return value, request
+
 

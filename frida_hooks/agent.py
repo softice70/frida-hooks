@@ -4,6 +4,7 @@
 import platform
 import configparser
 import os
+import sys
 from os.path import abspath, dirname
 from optparse import OptionGroup
 import frida
@@ -111,7 +112,7 @@ class FridaAgent:
                 self._keep_running = self._start_app(is_suspend=options.is_suspend)
                 while self._keep_running:
                     if not self._load_script():
-                        self.print_internal_cmd_help()
+                        self._print_internal_cmd_help()
                     self._run_console()
                     self._unload_script()
         except Exception as e:
@@ -227,18 +228,19 @@ class FridaAgent:
 
     def _exec_cmd_disable_and_enable(self, cmd, isEnable):
         ret = False
-        if len(cmd) == 2:
-            if cmd[1] not in self._scripts_map.keys():
-                print(f'key:{Colors.keyword2}{cmd[1]}{Colors.reset} not found')
+        if len(cmd) >= 2:
+            key = ' '.join(cmd[1:])
+            if key not in self._scripts_map.keys():
+                print(f'key:{Colors.keyword2}{key}{Colors.reset} not found')
             else:
-                if self._scripts_map[cmd[1]]['isEnable'] != isEnable:
-                    self._scripts_map[cmd[1]]['isEnable'] = isEnable
+                if self._scripts_map[key]['isEnable'] != isEnable:
+                    self._scripts_map[key]['isEnable'] = isEnable
                     ret = True
                 else:
                     print(
-                        f'key:{Colors.keyword3}{cmd[1]}{Colors.reset} has already been set to {Colors.keyword2}{isEnable}{Colors.reset}')
+                        f'hook: {Colors.keyword3}{key}{Colors.reset} has already been set to {Colors.keyword2}{isEnable}{Colors.reset}')
         else:
-            self.print_internal_cmd_help()
+            self._print_internal_cmd_help()
         return ret
 
     def _exec_cmd_remove_hook_item(self, cmd):
@@ -250,7 +252,7 @@ class FridaAgent:
                 del self._scripts_map[cmd[1]]
                 ret = True
         else:
-            self.print_internal_cmd_help()
+            self._print_internal_cmd_help()
         return ret
 
     @staticmethod
@@ -308,9 +310,9 @@ class FridaAgent:
             elif script['cmd'] == 'dump_so':
                 self._dump_so(script)
             elif script['cmd'] == 'list_app':
-                self.list_app()
+                self.list_app(False)
             elif script['cmd'] == 'list_process':
-                self.list_process()
+                self.list_process(False)
             elif script['api_cmd'] != '':
                 eval(script['api_cmd'])
 
@@ -326,10 +328,10 @@ class FridaAgent:
             f'\n  {Colors.keyword}e{Colors.keyword3}nable <key>{Colors.reset}\tset enable the hook item by key',
             f'\n  {Colors.keyword3}re{Colors.keyword}m{Colors.keyword3}ove <key>{Colors.reset}\tremove the hook item by key',
             f'\n  {Colors.keyword}r{Colors.keyword3}un [options]{Colors.reset}\trun hook option, see also <{Colors.keyword3}options{Colors.reset}>',
-            f'\n       example: --hook_class --class com.xxx.xxx.xxxxxx.Classxxx',
-            f'\n                --hook_func --class com.xxx.xxx.xxxxxx.Classxxx --func Funcxxx',
-            f'\n                --hook_so_func --module libxxx.so --func getSign',
-            f'\n                --hook_so_func --module libxxx.so --addr 0xedxxxxxx',
+            f'\n       example: run --hook_class --class com.xxx.xxx.xxxxxx.Classxxx',
+            f'\n                run --hook_func --class com.xxx.xxx.xxxxxx.Classxxx --func Funcxxx',
+            f'\n                run --hook_so_func --module libxxx.so --func getSign',
+            f'\n                run --hook_so_func --module libxxx.so --addr 0xedxxxxxx',
             f'\n  {Colors.keyword3}re{Colors.keyword}s{Colors.keyword3}tart{Colors.reset}\trestart the hook session',
             f'\n  {Colors.keyword3}cls{Colors.reset}\t\tclear screen',
             f'\n  {Colors.keyword}q{Colors.keyword3}uit{Colors.reset}\t\tquit'
@@ -368,6 +370,7 @@ class FridaAgent:
                 elif cmd[0] == 'run' or cmd[0] == 'r':
                     self._exec_cmd_run(cmd)
                 else:
+                    print(f'{Colors.warning}unknown command!{Colors.reset}')
                     self._print_internal_cmd_help()
 
         if self._keep_running and not self._is_app_running():
@@ -395,6 +398,7 @@ class FridaAgent:
 
     def _init_device(self):
         self._device = frida.get_usb_device(timeout=15)
+        sys.path.append(os.getcwd())
 
     def _exec_internal_cmd(self, options):
         if options.start_server:
