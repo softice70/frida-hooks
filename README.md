@@ -143,9 +143,8 @@ $ python .\frida_hook.py com.xxx.foo --dump_so_memory --module libxxx.so --offse
 
 相关项目
 -------
-[https://github.com/hluwa](https://github.com/hluwa)
-[https://github.com/liu20082004/DumpAndFix_SO](https://github.com/liu20082004/DumpAndFix_SO)
-[https://github.com/F8LEFT/SoFixer](https://github.com/F8LEFT/SoFixer)
+- [https://github.com/hluwa](https://github.com/hluwa)
+- [https://github.com/F8LEFT/SoFixer](https://github.com/F8LEFT/SoFixer)
 
 License
 -------
@@ -153,5 +152,7 @@ Licensed under the Apache License, Version 2.0
 
 ToDo
 -------
-- [ ] 安装frida server
-- [ ] 优化内部命令的错误说明
+- [ ] 安装frida server，使用frida-push
+- [ ] 增加activities、class_loader、BroadcastReceivers、services、Intent，参考objection
+- [ ] 增加结果过滤功能
+- [ ] 增加类或方法的查找功能

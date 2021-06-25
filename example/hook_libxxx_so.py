@@ -35,30 +35,6 @@ Java.perform(function(){
 
 def on_message(message, data):
     if message['type'] == 'send':
-        msg_data = message['payload']
-        if msg_data['type'] == 'stack':
-            straces = re.split(',', msg_data['data'])
-            print("----------------------------  stack  ----------------------------\n    " + '\n    '.join(straces))
-        elif msg_data['type'] == 'arguments':
-            args_before = json.loads(msg_data['before'])
-            args_after = json.loads(msg_data['after'])
-            arg_list = []
-            for key in args_before.keys():
-                if args_before[key] == args_after[key]:
-                    arg_list.append('    ' + key + '\t' + str(args_before[key]))
-                else:
-                    arg_list.append('    *' + key + '\n    before: ' + str(args_before[key]) \
-                                                  + '\n     after: ' + str(args_after[key]))
-            print("--------------------------  arguments  --------------------------\n" + '\n'.join(arg_list))
-        elif msg_data['type'] == 'return':
-            print("---------------------------  return  ---------------------------\n    return: " + msg_data['value'])
-        else:
-            print('[*] {0}'.format(message['payload']))
-    else:
-        print(message)
-
-def on_message(message, data):
-    if message['type'] == 'send':
         print('[*] {0}'.format(message['payload']))
     else:
         print(message)

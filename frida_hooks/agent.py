@@ -29,6 +29,7 @@ class FridaAgent:
         self._keep_running = False
         self._init_parser(self._parser)
         self._enable_deep_search_for_dump_dex = False
+        self._imp_mods = {}
         pass
 
     @staticmethod
@@ -131,16 +132,18 @@ class FridaAgent:
             log_file = cf.get("main", "log_file") if cf.has_option("main", "log_file") else ''
             Scriptor.set_silence((cf.get("main", "silence").lower() == 'true') if cf.has_option("main", "silence") else False)
             Scriptor.set_show_detail((cf.get("main", "show_detail").lower() == 'true') if cf.has_option("main", "show_detail") else False)
+            Scriptor.reset_frida_cmds()
             init_logger(log_file)
             if not self._app_package or self._app_package == app_package:
                 self._app_package = app_package
                 Scriptor.set_app_package(self._app_package)
                 configs = re.split(',', cf.get("main", "load_configs"))
                 for item in configs:
-                    script = Scriptor.prepare_script({'cf': cf, 'section': item})
+                    script = Scriptor.prepare_script({'cf': cf, 'section': item}, self._imp_mods)
                     if script:
                         self._scripts_map[script['key']] = script
                         ret = True
+                print(f'{Colors.keyword2}{cfg_file}{Colors.reset} is loaded...')
             else:
                 print(
                     f'{Colors.warning} warning: invalidate app_package:[{Colors.keyword3}{app_package}{Colors.warning}] in the config:[{Colors.keyword3}{cfg_file}{Colors.warning}]{Colors.reset}')
@@ -153,7 +156,7 @@ class FridaAgent:
         Scriptor.set_silence(options.silence)
         Scriptor.set_show_detail(options.show_detail)
         Scriptor.set_app_package(self._app_package)
-        script = Scriptor.prepare_script(options)
+        script = Scriptor.prepare_script(options, self._imp_mods)
         if script:
             self._scripts_map[script['key']] = script
         init_logger(options.log_file)
@@ -382,10 +385,10 @@ class FridaAgent:
 
     def _exec_cmd_run(self, cmd):
         if len(cmd) >= 2:
-            script = Scriptor.prepare_script(cmd)
+            script = Scriptor.prepare_script(cmd, self._imp_mods)
             if script and script['key'] not in self._scripts_map.keys():
                 self._exec_one_script(script)
-                if script['keepAlive']:
+                if script['persistent']:
                     self._scripts_map[script['key']] = script
         else:
             self._print_internal_cmd_help()
