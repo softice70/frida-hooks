@@ -1,7 +1,30 @@
+function wrap_java_perform(fn){
+  return new Promise((resolve, reject) => {
+    Java.perform(() => {
+      try {
+        resolve(fn());
+      } catch (e) {
+        reject(e);
+      }
+    });
+  });
+}
+
 function send_msg(data){
     if(data){
         send(data);
     }
+}
+
+function get_application_context() {
+  const ActivityThread = Java.use("android.app.ActivityThread");
+  return ActivityThread.currentApplication().getApplicationContext();
+}
+
+function R(name, type){
+  const context = get_application_context();
+  // https://github.com/bitpay/android-sdk/issues/14#issue-202495610
+  return context.getResources().getIdentifier(name, type, context.getPackageName());
 }
 
 //获取字段信息
@@ -39,15 +62,142 @@ function get_stack_trace(){
 }
 
 function list_class(){
-    var classes = []
-    Java.enumerateLoadedClasses({
-        "onMatch": function (className) {
-            classes.push(className);
-         },
-        "onComplete": function () {
-            send(classes.join("\n"));
-         }
+    return wrap_java_perform(() => {
+        var classes = []
+        Java.enumerateLoadedClasses({
+            "onMatch": function (className) {
+                classes.push(className);
+             },
+            "onComplete": function () { }
+        });
+       send_msg(classes);
+       return classes;
     });
+}
+
+function list_class_loaders(){
+    return wrap_java_perform(() => {
+      let loaders = [];
+      Java.enumerateClassLoaders({
+        onMatch: function(l) {
+          if (l == null) {
+            return
+          }
+          loaders.push(l.toString());
+        },
+        onComplete: function() { }
+      });
+
+      send_msg(loaders);
+      return loaders;
+    });
+}
+
+function list_activities() {
+    return wrap_java_perform(() => {
+      const packageManager = Java.use("android.content.pm.PackageManager");
+      const GET_ACTIVITIES = packageManager.GET_ACTIVITIES.value;
+      const context = get_application_context();
+      var activaties = Array.prototype.concat(context.getPackageManager()
+        .getPackageInfo(context.getPackageName(), GET_ACTIVITIES).activities.value.map((activityInfo) => {
+          return activityInfo.name.value;
+        }),
+      );
+      send_msg(activaties);
+      return activaties;
+    });
+}
+
+function list_current_activity() {
+    return wrap_java_perform(() => {
+      const activityThread = Java.use("android.app.ActivityThread");
+      const activityClass = Java.use("android.app.Activity");
+      const activityClientRecord = Java.use("android.app.ActivityThread$ActivityClientRecord");
+
+      const currentActivityThread = activityThread.currentActivityThread();
+      const activityRecords = currentActivityThread.mActivities.value.values().toArray();
+      let currentActivity;
+
+      for (const i of activityRecords) {
+        const activityRecord = Java.cast(i, activityClientRecord);
+        if (!activityRecord.paused.value) {
+          currentActivity = Java.cast(Java.cast(activityRecord, activityClientRecord).activity.value, activityClass);
+          break;
+        }
+      }
+
+      let activity = null;
+      let fragment = null;
+
+      if (currentActivity) {
+        // Discover an active fragment
+        const fm = currentActivity.getFragmentManager();
+        const curFragment = fm.findFragmentById(R("content_frame", "id"));
+        activity = currentActivity.$className;
+        fragment = curFragment.$className;
+      }
+      let ret = {activity: activity, fragment: fragment};
+      send_msg(ret)
+      return ret;
+    });
+}
+
+function list_services() {
+    return wrap_java_perform(() => {
+      const activityThread = Java.use("android.app.ActivityThread");
+      const arrayMap = Java.use("android.util.ArrayMap");
+      const packageManager = Java.use("android.content.pm.PackageManager");
+
+      const GET_SERVICES = packageManager.GET_SERVICES.value;
+
+      const currentApplication = activityThread.currentApplication();
+      // not using the helper as we need other variables too
+      const context = currentApplication.getApplicationContext();
+
+      let services = [];
+      currentApplication.mLoadedApk.value.mServices.value.values().toArray().map((potentialServices) => {
+        Java.cast(potentialServices, arrayMap).keySet().toArray().map((service) => {
+          services.push(service.$className);
+        });
+      });
+
+      services = services.concat(context.getPackageManager()
+        .getPackageInfo(context.getPackageName(), GET_SERVICES).services.value.map((activityInfo) => {
+          return activityInfo.name.value;
+        }),
+      );
+      send_msg(services);
+      return services;
+    });
+}
+
+function list_broadcast_receivers() {
+    return wrap_java_perform(() => {
+      const activityThread = Java.use("android.app.ActivityThread");
+      const arrayMap = Java.use("android.util.ArrayMap");
+      const packageManager = Java.use("android.content.pm.PackageManager");
+
+      const GET_RECEIVERS = packageManager.GET_RECEIVERS.value;
+      const currentApplication = activityThread.currentApplication();
+      // not using the helper as we need other variables too
+      const context = currentApplication.getApplicationContext();
+
+      let receivers = [];
+      currentApplication.mLoadedApk.value.mReceivers.value.values().toArray().map((potentialReceivers) => {
+        Java.cast(potentialReceivers, arrayMap).keySet().toArray().map((receiver) => {
+          receivers.push(receiver.$className);
+        });
+      });
+
+      receivers = receivers.concat(context.getPackageManager()
+        .getPackageInfo(context.getPackageName(), GET_RECEIVERS).receivers.value.map((activityInfo) => {
+          return activityInfo.name.value;
+        }),
+      );
+
+      send_msg(receivers);
+      return receivers;
+   });
 }
 
 function gen_request_data(request, timestamp, from){
@@ -116,7 +266,7 @@ function gen_response_data(response, timestamp, from){
 }
 
 function hook_func(class_name, method_name){
-    Java.perform(function(){
+    return wrap_java_perform(() => {
         var cls = Java.use(class_name);
         var field_array = cls.class.getFields();
         if(cls[method_name] == undefined){
@@ -148,7 +298,7 @@ function hook_func(class_name, method_name){
 }
 
 function hook_class(class_name){
-    Java.perform(function(){
+    return wrap_java_perform(() => {
         //获取类的所有方法
         var cls = Java.use(class_name);
         var field_array = cls.class.getFields();
@@ -188,7 +338,7 @@ function hook_class(class_name){
 }
 
 function hook_so_func(module_name, func_name, addr_str){
-    Java.perform(function(){
+    return wrap_java_perform(() => {
         //对函数名hook
         var ptr_func = func_name != ''?
                         Module.findExportByName(module_name, func_name):
@@ -211,7 +361,7 @@ function hook_so_func(module_name, func_name, addr_str){
 }
 
 function hook_so(module_name){
-    Java.perform(function(){
+    return wrap_java_perform(() => {
         var libxx = Process.getModuleByName(module_name);
         var exports = libxx.enumerateExports();
         for(var i = 0; i < exports.length; i++) {
@@ -240,7 +390,7 @@ function hook_so(module_name){
 }
 
 function hook_okhttp3_execute(){
-    Java.perform(function(){
+    return wrap_java_perform(() => {
         var RealCallClass = Java.use('okhttp3.RealCall');
         RealCallClass.execute.implementation = function(){
             var response = this.execute();
@@ -257,7 +407,7 @@ function hook_okhttp3_execute(){
 }
 
 function hook_okhttp3_CallServer(){
-    Java.perform(function(){
+    return wrap_java_perform(() => {
         var InterceptorClass = Java.use("okhttp3.internal.http.CallServerInterceptor");
         InterceptorClass.intercept.implementation=function(chain){
             var timestamp = (new Date()).getTime();
@@ -274,7 +424,7 @@ function hook_okhttp3_CallServer(){
 }
 
 function hook_intercept(class_name){
-    Java.perform(function(){
+    return wrap_java_perform(() => {
         var InterceptorClass = Java.use(class_name);
         InterceptorClass.intercept.implementation=function(chain){
             var timestamp = (new Date()).getTime();
@@ -290,51 +440,62 @@ function hook_intercept(class_name){
 }
 
 function dump_so_memory(module_name, offset, length){
-    Java.perform(function(){
+    return wrap_java_perform(() => {
         var libc = Module.findBaseAddress(module_name);
-        send(hexdump(libc, {offset: offset, length: length, header: true, ansi: true}));
+        var data = hexdump(libc, {offset: offset, length: length, header: true, ansi: true});
+        send_msg(data);
+        return data;
     });
 }
 
 function dump_class(class_name){
-    Java.perform(function(){
+    return wrap_java_perform(() => {
         //获取类的所有方法
         var cls = Java.use(class_name);
         var mhd_array = cls.class.getDeclaredMethods();
-        var datas = [];
-        datas.push("------------  " + class_name + "  ------------");
+        var msgs = [];
+        msgs.push("------------  " + class_name + "  ------------");
         //获取类的所有字段
+        var fields = []
         var field_array = cls.class.getFields();
         for (var i = 0; i < field_array.length; i++){
             var field = field_array[i]; //当前成员
             var field_name = field.getName();
             var field_class = field.getType().getName();
-            datas.push("field: " + col_keyword3 + field_name + col_reset + "\tclass: " + field_class);
+            msgs.push("field: " + col_keyword3 + field_name + col_reset + "\tclass: " + field_class);
+            fields.push({fieldName: field_name, fieldClass: field_class})
         }
         //hook 类所有方法 （所有重载方法也要hook)
+        var methods = [];
         for (var i = 0; i < mhd_array.length; i++){
             var mhd_cur = mhd_array[i]; //当前方法
             var str_mhd_name = mhd_cur.getName(); //当前方法名
             //当前方法重载方法的个数
             var n_overload_cnt = cls[str_mhd_name].overloads.length;
-            datas.push("method: " + col_keyword + str_mhd_name + col_reset + "()\toverload: " + n_overload_cnt);
+            msgs.push("method: " + col_keyword + str_mhd_name + col_reset + "()\toverload: " + n_overload_cnt);
+            methods.push({methodName: str_mhd_name, overloadCount: n_overload_cnt})
         }
-        send(datas.join("\n"));
+        send(msgs.join("\n"));
+        return {className: class_name, fields: fields, methods: methods}
     });
 }
 function list_so(){
-    var datas = []
-    Process.enumerateModules({
-        onMatch: function(module){
-            datas.push('    ' + col_keyword + module.name + col_reset + "\t" + module.base + "\t"+ module.size + "\t" + col_path + module.path + col_reset);
-        },
-       onComplete: function(){
-            send(datas.join("\n"));
-       }
+    return wrap_java_perform(() => {
+        var msgs = []
+        var datas = [];
+        Process.enumerateModules({
+            onMatch: function(module){
+                msgs.push('    ' + col_keyword + module.name + col_reset + "\t" + module.base + "\t"+ module.size + "\t" + col_path + module.path + col_reset);
+                datas.push(module)
+            },
+           onComplete: function(){ }
+        });
+        send_msg(msgs.join("\n"));
+        return datas;
     });
 }
 function dump_so(module_name, file_path){
-    Java.perform(function () {
+    return wrap_java_perform(() => {
         var libxx = Process.getModuleByName(module_name);
         var file_handle = new File(file_path, "wb");
         if (file_handle && file_handle != null) {
@@ -359,7 +520,7 @@ function find_so(module_name){
     }
 }
 function list_so_func(module_name){
-    Java.perform(function () {
+    return wrap_java_perform(() => {
         var datas = [];
         var libxx = Process.getModuleByName(module_name);
         datas.push(col_title+"--------------------------  " + libxx.name + "  --------------------------"+col_reset);
@@ -389,10 +550,11 @@ function list_so_func(module_name){
         }
         */
         send(datas.join("\n"));
+        return {module: libxx, exports: exports, imports: imports}
     });
 }
 function list_thread(){
-    Java.perform(function () {
+    return wrap_java_perform(() => {
         var enumerateThreads =  Process.enumerateThreads();
         for(var i = 0; i < enumerateThreads.length; i++) {
             console.log("");
@@ -400,11 +562,12 @@ function list_thread(){
             console.log("state:",enumerateThreads[i].state);
             console.log("context:",JSON.stringify(enumerateThreads[i].context));
         }
+        return enumerateThreads;
     });
 }
 function search_in_memory(module_name, pattern){
     //pattern 是搜索条件，如 "03 49 ?? 50 20 44"，其中 "??" 是通配符
-    Java.perform(function () {
+    return wrap_java_perform(() => {
         var libxx = Process.getModuleByName(module_name);
         console.log("base:"+libxx.base)
         //从so的基址开始搜索，搜索大小为so文件的大小，搜指定条件03 49 ?? 50 20 44的数据
@@ -578,7 +741,7 @@ function scan_dex(enable_deep_search) {
     return result;
 }
 function hook_RegisterNatives() {
-    Java.perform(function () {
+    return wrap_java_perform(() => {
         var symbols = Module.enumerateSymbolsSync("libart.so");
         var addrRegisterNatives = null;
         for (var i = 0; i < symbols.length; i++) {

@@ -43,6 +43,7 @@ class Colors:
     keyword = f'{ansi_colors["yellow"]}'
     keyword2 = f'{ansi_colors["bright_purple"]}'
     keyword3 = f'{ansi_colors["bright_cyan"]}'
+    keyword4 = f'{ansi_colors["bright_green"]}'
     path = f'{ansi_colors["bright_blue"]}{ansi_colors["underline"]}'
     title = f'{ansi_colors["bright_green"]}'
     column = f'{ansi_colors["bright_gray"]}{ansi_colors["reverse"]}'

@@ -69,6 +69,22 @@ $ python .\frida_hook.py com.xxx.foo --list_thread
 ```base
 $ python .\frida_hook.py com.xxx.foo --list_class
 ```
+- 列出Activatiy类的列表
+```base
+$ python .\frida_hook.py com.xxx.foo --list_activaties
+```
+- 列出currentActivatiy类的列表
+```base
+$ python .\frida_hook.py com.xxx.foo --list_current_activity
+```
+- 列出services类的列表
+```base
+$ python .\frida_hook.py com.xxx.foo --list_services
+```
+- 列出BroadcastReceivers类的列表
+```base
+$ python .\frida_hook.py com.xxx.foo --list_broadcast_receivers
+```
 - hook某应用的某个类的全部方法
 ```base
 $ python .\frida_hook.py com.xxx.foo --hook_class --class com.xxx.foo.community.mgr.CommunityMgr
@@ -145,6 +161,7 @@ $ python .\frida_hook.py com.xxx.foo --dump_so_memory --module libxxx.so --offse
 -------
 - [https://github.com/hluwa](https://github.com/hluwa)
 - [https://github.com/F8LEFT/SoFixer](https://github.com/F8LEFT/SoFixer)
+- [https://github.com/sensepost/objection](https://github.com/sensepost/objection)
 
 License
 -------
@@ -153,6 +170,7 @@ Licensed under the Apache License, Version 2.0
 ToDo
 -------
 - [ ] 安装frida server，使用frida-push
-- [ ] 增加activities、class_loader、BroadcastReceivers、services、Intent，参考objection
+- [ ] 增加Intent，参考objection
 - [ ] 增加结果过滤功能
 - [ ] 增加类或方法的查找功能
+- [ ] 支持多设备选择

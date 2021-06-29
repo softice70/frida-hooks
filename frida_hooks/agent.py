@@ -4,13 +4,15 @@
 import platform
 import configparser
 import os
-import sys
 from os.path import abspath, dirname
 from optparse import OptionGroup
 import frida
+import hashlib
+import _thread
+from http.server import HTTPServer
 from frida_hooks.scriptor import Scriptor
 from frida_hooks.utils import *
-import hashlib
+from frida_hooks.httphandler import HttpHandler
 
 
 md5 = lambda bs: hashlib.md5(bs).hexdigest()
@@ -31,6 +33,9 @@ class FridaAgent:
         self._init_parser(self._parser)
         self._enable_deep_search_for_dump_dex = False
         self._imp_mods = {}
+        self._host = "127.0.0.1"
+        self._port = 8989
+        self._httpd = None
         pass
 
     @staticmethod
@@ -105,11 +110,13 @@ class FridaAgent:
                 self._parser.print_help()
             else:
                 if options.config:
-                    self._load_config(options.config)
+                    self._keep_running = self._load_config(options.config)
                 else:
                     self._app_package = args[0]
                     self._load_options(options)
-                self._keep_running = self._start_app(is_suspend=options.is_suspend)
+                if self._keep_running:
+                    self._keep_running = self._start_app(is_suspend=options.is_suspend)
+                self._start_http_server()
                 while self._keep_running:
                     if not self._load_script():
                         self._print_internal_cmd_help()
@@ -119,6 +126,21 @@ class FridaAgent:
             print(e)
         self.exit()
 
+    def exec_one_script(self, script):
+        ret = None
+        if script['isEnable']:
+            if script['cmd'] == 'dump_dex':
+                self._dump_dex()
+            elif script['cmd'] == 'dump_so':
+                self._dump_so(script)
+            elif script['cmd'] == 'list_app':
+                self.list_app(False)
+            elif script['cmd'] == 'list_process':
+                self.list_process(False)
+            elif script['apiCmd'] != '':
+                ret = eval(script['apiCmd'])
+        return ret
+
     def exit(self):
         if self._session:
             self._session.detach()
@@ -126,34 +148,42 @@ class FridaAgent:
 
     def _load_config(self, cfg_file):
         ret = False
-        try:
-            cf = configparser.ConfigParser()
-            cf.read(cfg_file, 'utf-8')
-            app_package = cf.get("main", "app_package")
-            log_file = cf.get("main", "log_file") if cf.has_option("main", "log_file") else ''
-            Scriptor.set_silence((cf.get("main", "silence").lower() == 'true') if cf.has_option("main", "silence") else False)
-            Scriptor.set_show_detail((cf.get("main", "show_detail").lower() == 'true') if cf.has_option("main", "show_detail") else False)
-            Scriptor.reset_frida_cmds()
-            init_logger(log_file)
-            if not self._app_package or self._app_package == app_package:
-                self._app_package = app_package
-                Scriptor.set_app_package(self._app_package)
-                configs = re.split(',', cf.get("main", "load_configs"))
-                for item in configs:
-                    script = Scriptor.prepare_script({'cf': cf, 'section': item}, self._imp_mods)
-                    if script:
-                        self._scripts_map[script['key']] = script
-                        ret = True
-                print(f'{Colors.keyword2}{cfg_file}{Colors.reset} is loaded...')
-            else:
-                print(
-                    f'{Colors.warning} warning: invalidate app_package:[{Colors.keyword3}{app_package}{Colors.warning}] in the config:[{Colors.keyword3}{cfg_file}{Colors.warning}]{Colors.reset}')
-        except Exception as e:
-            print(e)
-        finally:
+        if os.path.exists(cfg_file):
+            try:
+                cf = configparser.ConfigParser()
+                cf.read(cfg_file, 'utf-8')
+                app_package = cf.get("main", "app_package")
+                log_file = cf.get("main", "log_file") if cf.has_option("main", "log_file") else ''
+                self._host = int(cf.get("main", "host")) if cf.has_option("main", "host") else self._host
+                self._port = int(cf.get("main", "port")) if cf.has_option("main", "port") else self._port
+                Scriptor.set_silence((cf.get("main", "silence").lower() == 'true') if cf.has_option("main", "silence") else False)
+                Scriptor.set_show_detail((cf.get("main", "show_detail").lower() == 'true') if cf.has_option("main", "show_detail") else False)
+                Scriptor.reset_frida_cmds()
+                init_logger(log_file)
+                if not self._app_package or self._app_package == app_package:
+                    self._app_package = app_package
+                    Scriptor.set_app_package(self._app_package)
+                    configs = re.split(',', cf.get("main", "load_configs"))
+                    for item in configs:
+                        script = Scriptor.prepare_script({'cf': cf, 'section': item}, self._imp_mods)
+                        if script:
+                            self._scripts_map[script['key']] = script
+                            ret = True
+                    print(f'{Colors.keyword2}{cfg_file}{Colors.reset} is loaded...')
+                else:
+                    print(
+                        f'{Colors.warning} warning: invalidate app_package:[{Colors.keyword3}{app_package}{Colors.warning}] in the config:[{Colors.keyword3}{cfg_file}{Colors.warning}]{Colors.reset}')
+            except Exception as e:
+                print(e)
+            finally:
+                return ret
+        else:
+            print(f'{Colors.warning}warning: config file not found! - {Colors.keyword3}{cfg_file}{Colors.reset}')
             return ret
 
     def _load_options(self, options):
+        self._host = options.host
+        self._port = options.port
         Scriptor.set_silence(options.silence)
         Scriptor.set_show_detail(options.show_detail)
         Scriptor.set_app_package(self._app_package)
@@ -162,6 +192,12 @@ class FridaAgent:
             self._scripts_map[script['key']] = script
         init_logger(options.log_file)
         return self._scripts_map
+
+    def _start_http_server(self):
+        HttpHandler.set_agent(self)
+        self._httpd = HTTPServer((self._host, self._port), HttpHandler)
+        _thread.start_new_thread(lambda: self._httpd.serve_forever(), ())
+        print(f'http server[{self._host}:{self._port}] is running...\nrpc url: POST http://{self._host}:{self._port}/run')
 
     def _get_pid(self, name, wait_time_in_sec=1):
         for i in range(wait_time_in_sec):
@@ -301,20 +337,7 @@ class FridaAgent:
 
     def _exec_script_cmd_after_load(self):
         for key in self._scripts_map.keys():
-            self._exec_one_script(self._scripts_map[key])
-
-    def _exec_one_script(self, script):
-        if script['isEnable']:
-            if script['cmd'] == 'dump_dex':
-                self._dump_dex()
-            elif script['cmd'] == 'dump_so':
-                self._dump_so(script)
-            elif script['cmd'] == 'list_app':
-                self.list_app(False)
-            elif script['cmd'] == 'list_process':
-                self.list_process(False)
-            elif script['api_cmd'] != '':
-                eval(script['api_cmd'])
+            self.exec_one_script(self._scripts_map[key])
 
     @staticmethod
     def _print_internal_cmd_help():
@@ -390,7 +413,7 @@ class FridaAgent:
         if len(cmd) >= 2:
             script = Scriptor.prepare_script(cmd, self._imp_mods)
             if script and script['key'] not in self._scripts_map.keys():
-                self._exec_one_script(script)
+                self.exec_one_script(script)
                 if script['persistent']:
                     self._scripts_map[script['key']] = script
         else:
@@ -521,6 +544,7 @@ class FridaAgent:
 
     @staticmethod
     def _init_parser(parser):
+        parser.remove_option('-h')
         Scriptor.add_cmd_options(parser)
         Scriptor.add_param_options(parser)
 
@@ -528,7 +552,11 @@ class FridaAgent:
         running_group.add_option("-S", "--spawn", action="store_true", dest="is_suspend", default=False,
                           help='spawn mode of Frida, that suspend app during startup')
         running_group.add_option("-m", "--monochrome", action="store_true", dest="monochrome", default=False,
-                          help='Set to monochrome mode')
+                          help='set to monochrome mode')
+        running_group.add_option("-h", "--host", action="store", type="string", dest="host", default="127.0.0.1",
+                          help='the ip of http server, default: 127.0.0.1')
+        running_group.add_option("-p", "--port", action="store", type="int", dest="port", default=8989,
+                          help='the port of http server, default: 8989')
         running_group.add_option("", "--silence", action="store_true", dest="silence", default=False,
                           help='no message is output to screen')
         running_group.add_option("-d", "--show_detail", action="store_true", dest="show_detail", default=False,
