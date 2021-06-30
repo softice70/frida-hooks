@@ -30,7 +30,7 @@ class Scriptor:
         {'api': 'listSoFunc', 'func': 'list_so_func', 'persistent': False, 'is_option': True,
          'help': 'list all functions of the so',
          'params': [{"name": "module", "type": "string"}]},
-        {'api': 'listThread', 'func': 'list_thread', 'persistent': False, 'is_option': True, 'help': 'list thread'},
+        {'api': 'listThread', 'func': 'list_thread', 'persistent': False, 'is_option': False, 'help': 'list thread'},
         {'api': 'hookFunc', 'func': 'hook_func', 'persistent': True, 'is_option': True,
          'help': 'hook the method of one class',
          'params': [{"name": "class", "type": "string"}, {"name": "func", "type": "string"}]},
@@ -39,9 +39,11 @@ class Scriptor:
          'params': [{"name": "class", "type": "string"}]},
         {'api': 'hookSoFunc', 'func': 'hook_so_func', 'persistent': True, 'is_option': True,
          'help': 'hook the function of some module',
-         'usage': f'Usage: {Colors.keyword4}run {Colors.keyword3}--hook_so_func{Colors.reset}'
-                  + f' < {Colors.keyword}--func{Colors.keyword2} <func> |'
-                  + f' {Colors.keyword}--addr{Colors.keyword2} <addr>{Colors.reset} >'},
+         'params': [
+             {"name": "module", "type": "string"},
+             {"name": "func", "type": "string", "isOptional": True},
+             {"name": "addr", "type": "string", "isOptional": True}
+         ]},
         {'api': 'hookSo', 'func': 'hook_so', 'persistent': True, 'is_option': True,
          'help': 'hook all functions of some module',
          'params': [{"name": "module", "type": "string"}]},
@@ -72,6 +74,7 @@ class Scriptor:
         {'api': 'memoryDump', 'func': 'memory_dump', 'persistent': False, 'is_option': False},
         {'api': 'scanDex', 'func': 'scan_dex', 'persistent': False, 'is_option': False},
         {'api': 'findSo', 'func': 'find_so', 'persistent': False, 'is_option': False},
+        {'api': 'setColorMode', 'func': 'set_color_mode', 'persistent': False, 'is_option': False},
     ]
     _frida_cmds = _original_frida_cmds[:]
     _script_params = [
@@ -86,17 +89,6 @@ class Scriptor:
          'help': 'length of the memory to dump or save'},
         {'name': 'deep_search', "option_name": 'deep_search', 'type': 'bool', 'default': False,
          'help': 'enable deep search maybe detected more dex, but speed will be slower'},
-    ]
-    _script_colors = [
-        {'name': 'col_hooked', 'value': Colors.hooked},
-        {'name': 'col_keyword', 'value': Colors.keyword},
-        {'name': 'col_keyword2', 'value': Colors.keyword2},
-        {'name': 'col_keyword3', 'value': Colors.keyword3},
-        {'name': 'col_path', 'value': Colors.path},
-        {'name': 'col_title', 'value': Colors.title},
-        {'name': 'col_column', 'value': Colors.column},
-        {'name': 'col_exit', 'value': Colors.exit},
-        {'name': 'col_reset', 'value': Colors.reset},
     ]
     _is_silence = False
     _show_detail = False
@@ -126,8 +118,9 @@ class Scriptor:
         cmd_group = OptionGroup(parser, 'Command Options')
         for item in Scriptor._frida_cmds:
             if "is_option" in item.keys() and item['is_option']:
-                cmd_group.add_option("", f"--{item['func']}", action="store_true", dest=f"{item['func']}", default=False,
-                                     help=f'{item["help"]}, {Scriptor._get_cmd_usage(item)}')
+                cmd_group.add_option("", f"--{item['func']}", action="store_true", dest=f"{item['func']}",
+                                     default=False,
+                                     help=f'{item["help"]}')
         parser.add_option_group(cmd_group)
 
     @staticmethod
@@ -135,11 +128,11 @@ class Scriptor:
         print('Options:')
         for item in Scriptor._frida_cmds:
             if "is_option" in item.keys() and item['is_option']:
-                print(f"{Colors.keyword3}  --{item['func']}{Colors.reset}{' '*(25-len(item['func']))}{item['help']}"
-                      + f"\n{' '* 29}{Scriptor._get_cmd_usage(item)}")
+                print(clr_bright_cyan(f"  --{item['func']:<30}") + item['help'])
+                print(f"{' ' * 34}{Scriptor._get_cmd_usage(item)}")
         print('\nParameters:')
         for item in Scriptor._script_params:
-            print(f"{Colors.keyword3}  --{item['option_name']}{Colors.reset}{' '*(25-len(item['option_name']))}{item['help']}")
+            print(clr_bright_cyan(f"  --{item['option_name']:<30}") + item['help'])
 
     @staticmethod
     def add_param_options(parser):
@@ -162,16 +155,16 @@ class Scriptor:
     @staticmethod
     def prepare_script(options, imp_mods):
         script = None
-        cmd = Scriptor._get_option(options, "cmd", None)
-        if cmd != 'custom' and not Scriptor._get_cmd_info(cmd):
-            print(f'{Colors.warning}unknown option, please see {Colors.keyword3}options{Colors.reset}')
+        cmd = Scriptor._get_option(options, "cmd")
+        if cmd == '' or (cmd != 'custom' and not Scriptor._get_cmd_info(cmd)):
+            print(clr_bright_red(f'unknown option, please see {clr_bright_cyan("options")}'))
             return script
         script_str = fun_on_msg = None
-        file_script = Scriptor._get_option(options, "file_script", None)
-        if file_script:
+        file_script = Scriptor._get_option(options, "file_script")
+        if file_script != '':
             script_str, rpc_define, fun_on_msg = Scriptor.__load_script_file(file_script, imp_mods)
         if cmd == 'custom':
-            if file_script:
+            if file_script != '':
                 if script_str:
                     key = f'--file_script {file_script}'
                     script = {'script': script_str, 'cmd': 'custom', 'persistent': True, 'key': key, 'isEnable': True,
@@ -179,14 +172,15 @@ class Scriptor:
                 else:
                     print(f'Error: jscode not found in {file_script}!')
             else:
-                print(f'{Colors.warning}custom: --file_script must be set{Colors.reset}')
+                print(clr_bright_red('custom: --file_script must be set'))
         elif cmd:
             if cmd == 'hook_so_func':
-                module = Scriptor._get_option(options, "module_name", '')
-                func = Scriptor._get_option(options, "func_name", '')
+                module = Scriptor._get_option(options, "module", '')
+                func = Scriptor._get_option(options, "func", '')
                 addr = Scriptor._get_option(options, "addr", '')
                 if module != '' and (func != '' or addr != ''):
-                    key = f"--{cmd} --module {module} {'--func %s' % func if func != '' else ''}{'--addr %s' % addr if addr != '' else ''}"
+                    key = f"--{cmd} --module {module} {'--func %s' % func if func != '' else ''}" \
+                          + f" {'--addr %s' % addr if addr != '' else ''}"
                     api_cmd = f'self._script.exports.{cmd}("{module}", "{func}", "{addr}")'
                     params = {'module': module, 'func': func, 'addr': addr}
                     script = {'cmd': cmd, 'key': key, 'apiCmd': api_cmd, 'params': params, 'persistent': True}
@@ -244,7 +238,7 @@ class Scriptor:
                         Scriptor._handle_one_message(msg)
                     else:
                         if not Scriptor._is_silence:
-                            print_screen(f'{Colors.keyword2}* {Colors.reset}{msg}', False)
+                            print_screen(f'{clr_bright_purple("*")} {msg}', False)
                         write_log(msg)
                 print_prompt()
             else:
@@ -259,17 +253,14 @@ class Scriptor:
     @staticmethod
     def _handle_one_message(msg_data):
         text_to_print = ''
+        _underline = "_" * 20
         if 'type' in msg_data.keys():
             if msg_data['type'] == 'stack' and Scriptor._show_detail:
                 straces = re.split(',', msg_data['data'].encode('utf8', 'ignore').decode('utf8'))
-                timestamp = ("[" + str(msg_data['timestamp']) + "]") if 'timestamp' in msg_data.keys() else ""
-                if 'hookName' in msg_data.keys():
-                    text_to_print = Colors.title + ("---------------------  stack: %s %s ---------------------" % (
-                        msg_data['funcName'], timestamp)) + Colors.reset + "\n    " + '\n    '.join(straces)
-                else:
-                    text_to_print = Colors.title + (
-                            "--------------------------  stack %s --------------------------" % timestamp) + Colors.reset \
-                                    + "\n    " + '\n    '.join(straces)
+                timestamp = f"[{str(msg_data['timestamp'])}]" if 'timestamp' in msg_data.keys() else ""
+                hook_name = msg_data["funcName"] if 'hookName' in msg_data.keys() else ''
+                text_to_print = clr_bright_green(f'{_underline}{"stack: %s %s" % (hook_name, timestamp):^40}'
+                                                 + f'{_underline}\n  ') + '\n  '.join(straces)
             elif msg_data['type'] == 'arguments':
                 timestamp = ("[" + str(msg_data['timestamp']) + "]") if 'timestamp' in msg_data.keys() else ""
                 args_before = json.loads(msg_data['before'])
@@ -277,32 +268,22 @@ class Scriptor:
                 arg_list = []
                 for key in args_before.keys():
                     if args_before[key] == args_after[key]:
-                        arg_list.append('    ' + key + '\t' + Colors.keyword + str(args_before[key]) + Colors.reset)
+                        arg_list.append('  ' + key + '\t' + clr_yellow(str(args_before[key])))
                     else:
-                        arg_list.append('    *' + key + '\n    before: ' + Colors.keyword + str(args_before[key]) + Colors.reset \
-                                        + '\n     after: ' + Colors.keyword + str(args_after[key]) + Colors.reset)
-                if 'hookName' in msg_data.keys():
-                    text_to_print = Colors.title + (
-                            "-------------------  arguments: %s %s -------------------" % (
-                        msg_data['funcName'], timestamp)) + Colors.reset + "\n" + '\n'.join(arg_list)
-                else:
-                    text_to_print = Colors.title + (
-                            "------------------------  arguments %s ------------------------" % timestamp) + Colors.reset \
-                                    + "\n" + '\n'.join(arg_list)
+                        arg_list.append(' *' + key + '\n    before: ' + clr_yellow(str(args_before[key])) \
+                                        + '\n     after: ' + clr_yellow(str(args_after[key])))
+                hook_name = msg_data["funcName"] if 'hookName' in msg_data.keys() else ''
+                text_to_print = clr_bright_green(f'{_underline}{"arguments: %s %s" % (hook_name, timestamp):^40}'
+                                                 + f'{_underline}\n') + '\n'.join(arg_list)
             elif msg_data['type'] == 'asm_args':
                 timestamp = ("[" + str(msg_data['timestamp']) + "]") if 'timestamp' in msg_data.keys() else ""
                 args = msg_data['data']
                 arg_list = []
                 for key in args.keys():
-                    arg_list.append('    arg[' + key + ']=' + Colors.keyword + str(args[key]) + Colors.reset)
-                if 'hookName' in msg_data.keys():
-                    text_to_print = Colors.title + (
-                            "------------------------  arguments %s %s ------------------------" % (
-                        msg_data['funcName'], timestamp)) + Colors.reset + "\n" + '\n'.join(arg_list)
-                else:
-                    text_to_print = Colors.title + (
-                            "------------------------  arguments %s ------------------------" % timestamp) + Colors.reset \
-                                    + "\n" + '\n'.join(arg_list)
+                    arg_list.append('  arg[' + key + ']=' + clr_yellow(str(args[key])))
+                hook_name = msg_data["funcName"] if 'hookName' in msg_data.keys() else ''
+                text_to_print = clr_bright_green(f'{_underline}{"arguments: %s %s" % (hook_name, timestamp):^40}'
+                                                 + f'{_underline}\n') + '\n'.join(arg_list)
             elif msg_data['type'] == 'fields' and Scriptor._show_detail:
                 timestamp = ("[" + str(msg_data['timestamp']) + "]") if 'timestamp' in msg_data.keys() else ""
                 fields_before = json.loads(msg_data['before'])
@@ -310,56 +291,40 @@ class Scriptor:
                 field_list = []
                 for key in fields_before.keys():
                     if fields_before[key]['value'] == fields_after[key]['value']:
-                        field_info = "    field: " + Colors.keyword3 + key + Colors.reset \
-                                     + "\tclass: " + fields_before[key]['class'] + "\tvalue: " + Colors.keyword2 + str(
-                            fields_before[key]['value']) + Colors.reset
+                        field_info = "  field: " + clr_bright_cyan(key) + "\tclass: " + fields_before[key]['class'] \
+                                     + "\tvalue: " + clr_bright_purple(str(fields_before[key]['value']))
                     else:
-                        field_info = "   *field: " + Colors.keyword3 + key + Colors.reset \
-                                     + "\tclass: " + fields_before[key]['class'] + "\n        value_before: " + Colors.keyword2 \
-                                     + str(
-                            fields_before[key]['value']) + Colors.reset + "\n         value_after: " + Colors.keyword2 \
-                                     + str(fields_after[key]['value']) + Colors.reset
+                        field_info = " *field: " + clr_bright_cyan(key) + "\tclass: " + fields_before[key]['class'] \
+                                + "\n    value_before: " + clr_bright_purple(str(fields_before[key]['value'])) \
+                                + "\n    value_after : " + clr_bright_purple(str(fields_after[key]['value']))
                     field_list.append(field_info)
-                if 'hookName' in msg_data.keys():
-                    text_to_print = Colors.title + (
-                            "-------------------------  fields %s %s -------------------------" % (
-                        msg_data['funcName'], timestamp)) + Colors.reset + "\n" + '\n'.join(field_list)
-                else:
-                    text_to_print = Colors.title + (
-                            "-------------------------  fields %s -------------------------" % timestamp) + Colors.reset \
-                                    + "\n" + '\n'.join(field_list)
+                hook_name = msg_data["funcName"] if 'hookName' in msg_data.keys() else ''
+                text_to_print = clr_bright_green(f'{_underline}{"fields: %s %s" % (hook_name, timestamp):^40}'
+                                                 + f'{_underline}\n') + '\n'.join(field_list)
             elif msg_data['type'] == 'return':
                 timestamp = ("[" + str(msg_data['timestamp']) + "]") if 'timestamp' in msg_data.keys() else ""
-                if 'hookName' in msg_data.keys():
-                    text_to_print = Colors.title + (
-                            "--------------------  return: %s %s --------------------" % (
-                        msg_data['funcName'], timestamp)) + Colors.reset + "\n    return: " + Colors.keyword + \
-                                    msg_data['value'] + Colors.reset
-                else:
-                    text_to_print = Colors.title + (
-                            "-------------------------  return %s -------------------------" % timestamp) + Colors.reset \
-                                    + "\n    return: " + Colors.keyword + msg_data['value'] + Colors.reset
+                hook_name = msg_data["funcName"] if 'hookName' in msg_data.keys() else ''
+                text_to_print = clr_bright_green(f'{_underline}{"return: %s %s" % (hook_name, timestamp):^40}'
+                                                 + f'{_underline}') + "\n  return: " + clr_yellow(msg_data['value'])
             elif msg_data['type'] == 'registerNatives':
                 methods = json.loads(msg_data['methods'])
                 method_infos = []
                 for item in methods:
                     method_infos.append(
-                        f'    {Colors.keyword}{item["java_class"]} {Colors.keyword3}{item["module_name"]} {Colors.reset}{item["fnPtr"]} {item["offset"]} {Colors.keyword2}{item["name"]}{Colors.reset} {item["sig"]}')
-                text_to_print = Colors.title + (
-                        "------------------------  registerNatives %s ------------------------" % len(
-                    methods)) + Colors.reset + "\n" + '\n'.join(method_infos)
+                        f'  {clr_yellow(item["java_class"])} {clr_bright_cyan(item["module_name"])} {item["fnPtr"]}'
+                        + f' {item["offset"]} {clr_bright_purple(item["name"])} {item["sig"]}')
+                text_to_print = clr_bright_green(f'{_underline}{"registerNatives: %d" % len(methods):^40}'
+                                                 + f'{_underline}\n') + '\n'.join(method_infos)
             elif msg_data['type'] == 'request':
                 timestamp = ("[" + str(msg_data['timestamp']) + "]") if 'timestamp' in msg_data.keys() else ""
                 param_infos = parse_request(msg_data)
-                text_to_print = Colors.title + \
-                                ("------------------------  %s:request %s ------------------------\n" % (
-                                    msg_data['from'], timestamp)) + Colors.reset + '\n'.join(param_infos)
+                text_to_print = clr_bright_green(f"{_underline} {'%s:request %s' % (msg_data['from'], timestamp):^40}"
+                                                 + f" {_underline}\n") + '\n'.join(param_infos)
             elif msg_data['type'] == 'response':
                 timestamp = ("[" + str(msg_data['timestamp']) + "]") if 'timestamp' in msg_data.keys() else ""
                 response_infos = parse_response(msg_data)
-                text_to_print = Colors.title + \
-                                ("------------------------  %s:response %s ------------------------\n" % (
-                                    msg_data['from'], timestamp)) + Colors.reset + '\n'.join(response_infos)
+                text_to_print = clr_bright_green(f"{_underline} {'%s:response %s' % (msg_data['from'], timestamp):^40}"
+                                                 + f" {_underline}\n") + '\n'.join(response_infos)
         else:
             text_to_print = Scriptor.__get_print_text_for_dict(msg_data)
         if not Scriptor._is_silence:
@@ -374,7 +339,7 @@ class Scriptor:
             if len(key) > max_len:
                 max_len = len(key)
         for key in msg_data.keys():
-            datas.append(f'{Colors.keyword}{key}{Colors.reset}{" "*(max_len-len(key)+1)}{Colors.keyword3}{msg_data[key]}{Colors.reset}')
+            datas.append(f'{clr_yellow(key)}{" " * (max_len - len(key) + 1)}{clr_bright_cyan(msg_data[key])}')
         return '\n'.join(datas)
 
     @staticmethod
@@ -410,7 +375,7 @@ class Scriptor:
             return Scriptor._get_option_from_cmd(options, item, default)
         else:
             return Scriptor._get_option_from_options(options, item, default)
-    
+
     @staticmethod
     def _get_option_from_cmd(cmd, item, default=''):
         ret = default
@@ -419,12 +384,12 @@ class Scriptor:
                 if len(cmd[1]) > 2:
                     ret = cmd[1][2:]
                 else:
-                    print(f'{Colors.warning}invalidate parameter: {cmd[1]}{Colors.reset}')
+                    print(clr_bright_red(f'invalidate parameter: {cmd[1]}'))
             else:
                 param = item if item not in ['module_name', 'class_name', 'func_name'] else item[:-5]
                 ret = Scriptor._get_internal_cmd_param(cmd, param, default)
         return ret
-    
+
     @staticmethod
     def _get_internal_cmd_param(cmd, param, default=''):
         ret = default
@@ -433,7 +398,7 @@ class Scriptor:
             if cmd[i] == param and i + 1 < len(cmd):
                 return cmd[i + 1]
         return ret
-    
+
     @staticmethod
     def _get_option_from_options(options, item, default=''):
         ret = default
@@ -470,7 +435,7 @@ class Scriptor:
                 if value != '':
                     params[name] = value
                     params_in_key.append(f'--{name} {value}')
-                    param_in_api = f'"{value}"' if type == "string" else {value}
+                    param_in_api = f'"{value}"' if type == "string" else value
                     params_in_api.append(param_in_api)
                 else:
                     is_param_ok = False
@@ -481,7 +446,7 @@ class Scriptor:
                 persistent = cmd_def['persistent'] if 'persistent' in cmd_def.keys() else False
                 script = {'cmd': cmd, 'key': key, 'apiCmd': api_cmd, 'params': params, 'persistent': persistent}
             else:
-                print(f'{Colors.warning}syntax error!{Colors.reset}\n{Scriptor._get_cmd_usage(cmd_def)}')
+                print(clr_bright_red(f'syntax error!\n{Scriptor._get_cmd_usage(cmd_def)}'))
         else:
             key = f"--{cmd}"
             api_cmd = f'self._script.exports.{cmd}()'
@@ -497,22 +462,24 @@ class Scriptor:
             param_in_usage = []
             if 'params' in cmd_def.keys() and len(cmd_def['params']) > 0:
                 for param_def in cmd_def['params']:
-                    param_in_usage.append(f"{Colors.keyword}--{param_def['name']}{Colors.keyword2} <{param_def['name']}>")
-            return f'Usage: {Colors.keyword4}run {Colors.keyword3}--{cmd_def["func"]} {" ".join(param_in_usage)}{Colors.reset}'
+                    if 'isOptional' in param_def.keys() and param_def['isOptional']:
+                        param_in_usage.append(
+                            clr_yellow(f"[--{param_def['name']}") + clr_bright_purple(f" <{param_def['name']}>") + "]")
+                    else:
+                        param_in_usage.append(
+                            clr_yellow(f"--{param_def['name']}") + clr_bright_purple(f" <{param_def['name']}>"))
+            return f'Usage: {clr_bright_green("run")} {clr_bright_cyan("--" + cmd_def["func"])}' \
+                   + f' {" ".join(param_in_usage)}'
 
     @staticmethod
     def _merge_script(rpc_defines, script_str_ex):
-        color_scripts = []
-        for item in Scriptor._script_colors:
-            color_scripts.append(f'let {item["name"]} = "{item["value"]}";')
         Scriptor._frida_cmds = Scriptor._original_frida_cmds + rpc_defines
         rpc_exports = []
         for item in Scriptor._frida_cmds:
             if "api" in item.keys():
                 rpc_exports.append(f'    {item["api"]}: {item["func"]},')
         export_script = '\n\nrpc.exports = {\n' + '\n'.join(rpc_exports) + '\n}\n\n'
-        return "\n".join(color_scripts) + export_script + _script_core + script_str_ex
+        return export_script + _script_core + script_str_ex
 
 
 _script_core = Scriptor.load_scripts()
-

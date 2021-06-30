@@ -37,21 +37,49 @@ ansi_colors = {
     "overline": "\033[53m",
 }
 
+_is_color_mode = True
+clr_reset = lambda: "\033[0m" if _is_color_mode else ''
+clr_black = lambda text: clr_ansify("\033[0;30m", text)
+clr_dark_gray = lambda text: clr_ansify("\033[1;30m", text)
+clr_blue = lambda text: clr_ansify("\033[0;34m", text)
+clr_bright_blue = lambda text: clr_ansify("\033[1;34m", text)
+clr_green = lambda text: clr_ansify("\033[0;32m", text)
+clr_bright_green = lambda text: clr_ansify("\033[1;32m", text)
+clr_cyan = lambda text: clr_ansify("\033[0;36m", text)
+clr_bright_cyan = lambda text: clr_ansify("\033[1;36m", text)
+clr_red = lambda text: clr_ansify("\033[0;31m", text)
+clr_bright_red = lambda text: clr_ansify("\033[1;31m", text)
+clr_purple = lambda text: clr_ansify("\033[0;35m", text)
+clr_bright_purple = lambda text: clr_ansify("\033[1;35m", text)
+clr_brown = lambda text: clr_ansify("\033[0;33m", text)
+clr_yellow = lambda text: clr_ansify("\033[1;33m", text)
+clr_bright_gray = lambda text: clr_ansify("\033[0;37m", text)
+clr_white = lambda text: clr_ansify("\033[1;37m", text)
+clr_bg_black = lambda text: clr_ansify("\033[40m", text)
+clr_bg_red = lambda text: clr_ansify("\033[41m", text)
+clr_bg_green = lambda text: clr_ansify("\033[42m", text)
+clr_bg_yellow = lambda text: clr_ansify("\033[43m", text)
+clr_bg_blue = lambda text: clr_ansify("\033[44m", text)
+clr_bg_purple = lambda text: clr_ansify("\033[45m", text)
+clr_bg_cyan = lambda text: clr_ansify("\033[46m", text)
+clr_bg_white = lambda text: clr_ansify("\033[47m", text)
+clr_bright = lambda text: clr_ansify("\033[1m", text)
+clr_dim = lambda text: clr_ansify("\033[2m", text)
+clr_underline = lambda text: clr_ansify("\033[4m", text)
+clr_blink = lambda text: clr_ansify("\033[5m", text)
+clr_reverse = lambda text: clr_ansify("\033[7m", text)
+clr_strikethrough = lambda text: clr_ansify("\033[9m", text)
+clr_overline = lambda text: clr_ansify("\033[53m", text)
 
-class Colors:
-    hooked = f'{ansi_colors["yellow"]}{ansi_colors["blink"]}'
-    keyword = f'{ansi_colors["yellow"]}'
-    keyword2 = f'{ansi_colors["bright_purple"]}'
-    keyword3 = f'{ansi_colors["bright_cyan"]}'
-    keyword4 = f'{ansi_colors["bright_green"]}'
-    path = f'{ansi_colors["bright_blue"]}{ansi_colors["underline"]}'
-    title = f'{ansi_colors["bright_green"]}'
-    column = f'{ansi_colors["bright_gray"]}{ansi_colors["reverse"]}'
-    warning = f'{ansi_colors["bright_red"]}'
-    exit = f'{ansi_colors["bright_gray"]}{ansi_colors["reverse"]}'
-    reset = ansi_colors["reset"]
+clr_ansify = lambda color, text: f'{color}{text}\033[0m' if _is_color_mode else text
 
-    @staticmethod
-    def set_monochrome_mode():
-        Colors.hooked = Colors.keyword = Colors.keyword2 = Colors.keyword3 = Colors.path \
-            = Colors.title = Colors.column = Colors.warning = Colors.exit = Colors.reset = ""
+
+def set_color_mode(is_color_mode):
+    global _is_color_mode
+    _is_color_mode = is_color_mode
+
+
+def get_color_mode():
+    global _is_color_mode
+    return _is_color_mode
+

@@ -49,7 +49,7 @@ class FridaAgent:
             FridaAgent.__start_frida_server()
             sid = get_pid_by_adb_shell(FridaAgent._frida_server_path, 10)
             if sid < 0:
-                print("error: frida server %s failed to start" % FridaAgent._frida_server_path)
+                print(f"error: frida server {FridaAgent._frida_server_path} failed to start")
             else:
                 print(f'{FridaAgent._frida_server_path}[pid:{sid}] is running...')
             return sid
@@ -80,7 +80,7 @@ class FridaAgent:
             app_list.sort(key=lambda s: s.identifier)
             for item in app_list:
                 print(
-                    f'{item.pid}\t{Colors.keyword3}{item.identifier}{" " * (60 - len(item.identifier))}{Colors.keyword}{item.name}{Colors.reset}')
+                    f'{item.pid:<10}{clr_bright_cyan(item.identifier):<60}{clr_yellow(item.name)}')
         else:
             raise Exception()
 
@@ -94,7 +94,7 @@ class FridaAgent:
             proc_list.sort(key=lambda s: s.name)
             for item in proc_list:
                 cn_name = app_dict[item.name] if item.name in app_dict.keys() else ''
-                print(f'{item.pid}\t{Colors.keyword3}{item.name}{" " * (60 - len(item.name))}{Colors.keyword}{cn_name}{Colors.reset}')
+                print(f'{item.pid:<10}{clr_bright_cyan(item.name):<60}{clr_yellow(cn_name)}')
         else:
             raise Exception()
 
@@ -102,7 +102,7 @@ class FridaAgent:
         try:
             (options, args) = self._parser.parse_args()
             if options.monochrome:
-                Colors.set_monochrome_mode()
+                set_color_mode(False)
             self._init_device()
             if len(args) == 0 and not options.config:
                 self._exec_internal_cmd(options)
@@ -123,28 +123,33 @@ class FridaAgent:
                     self._run_console()
                     self._unload_script()
         except Exception as e:
-            print(e)
+            print(f'run:{e}')
         self.exit()
 
     def exec_one_script(self, script):
         ret = None
         if script['isEnable']:
-            if script['cmd'] == 'dump_dex':
-                self._dump_dex()
-            elif script['cmd'] == 'dump_so':
-                self._dump_so(script)
-            elif script['cmd'] == 'list_app':
-                self.list_app(False)
-            elif script['cmd'] == 'list_process':
-                self.list_process(False)
-            elif script['apiCmd'] != '':
-                ret = eval(script['apiCmd'])
+            try:
+                if script['cmd'] == 'dump_dex':
+                    self._dump_dex()
+                elif script['cmd'] == 'dump_so':
+                    self._dump_so(script)
+                elif script['cmd'] == 'list_app':
+                    self.list_app(False)
+                elif script['cmd'] == 'list_process':
+                    self.list_process(False)
+                elif script['apiCmd'] != '':
+                    ret = eval(script['apiCmd'])
+            except Exception as e:
+                print(clr_red(f'\nError: {e}\n  cmd: {script["key"]}'))
+                script['isEnable'] = False
+                pass
         return ret
 
     def exit(self):
         if self._session:
             self._session.detach()
-        print(Colors.exit + 'frida hooker exited.' + Colors.reset)
+        print(clr_bright_gray(clr_reverse('frida hooker exited.')))
 
     def _load_config(self, cfg_file):
         ret = False
@@ -156,8 +161,10 @@ class FridaAgent:
                 log_file = cf.get("main", "log_file") if cf.has_option("main", "log_file") else ''
                 self._host = int(cf.get("main", "host")) if cf.has_option("main", "host") else self._host
                 self._port = int(cf.get("main", "port")) if cf.has_option("main", "port") else self._port
-                Scriptor.set_silence((cf.get("main", "silence").lower() == 'true') if cf.has_option("main", "silence") else False)
-                Scriptor.set_show_detail((cf.get("main", "show_detail").lower() == 'true') if cf.has_option("main", "show_detail") else False)
+                Scriptor.set_silence(
+                    cf.get("main", "silence").lower() == 'true' if cf.has_option("main", "silence") else False)
+                Scriptor.set_show_detail(
+                    cf.get("main", "show_detail").lower() == 'true' if cf.has_option("main", "show_detail") else False)
                 Scriptor.reset_frida_cmds()
                 init_logger(log_file)
                 if not self._app_package or self._app_package == app_package:
@@ -169,16 +176,16 @@ class FridaAgent:
                         if script:
                             self._scripts_map[script['key']] = script
                             ret = True
-                    print(f'{Colors.keyword2}{cfg_file}{Colors.reset} is loaded...')
+                    print(f'{clr_bright_purple(cfg_file)} is loaded...')
                 else:
-                    print(
-                        f'{Colors.warning} warning: invalidate app_package:[{Colors.keyword3}{app_package}{Colors.warning}] in the config:[{Colors.keyword3}{cfg_file}{Colors.warning}]{Colors.reset}')
+                    print(clr_bright_red("warning: invalidate app_package:[") + clr_bright_cyan(app_package)
+                          + clr_bright_red("] in the config:[") + clr_bright_cyan(cfg_file) + clr_bright_red("]"))
             except Exception as e:
                 print(e)
             finally:
                 return ret
         else:
-            print(f'{Colors.warning}warning: config file not found! - {Colors.keyword3}{cfg_file}{Colors.reset}')
+            print(f'{clr_bright_red("warning: config file not found! - ")}{clr_bright_cyan(cfg_file)}')
             return ret
 
     def _load_options(self, options):
@@ -197,7 +204,8 @@ class FridaAgent:
         HttpHandler.set_agent(self)
         self._httpd = HTTPServer((self._host, self._port), HttpHandler)
         _thread.start_new_thread(lambda: self._httpd.serve_forever(), ())
-        print(f'http server[{self._host}:{self._port}] is running...\nrpc url: POST http://{self._host}:{self._port}/run')
+        print(f'http server[{self._host}:{self._port}] is running...')
+        print(f'rpc url: POST http://{self._host}:{self._port}/run')
 
     def _get_pid(self, name, wait_time_in_sec=1):
         for i in range(wait_time_in_sec):
@@ -248,7 +256,7 @@ class FridaAgent:
     def _start_app(self, is_suspend=False):
         if self.start_frida_server() > 0:
             if not is_suspend:
-                self._target_pid = self._get_proecess_id(self._app_package)
+                self._target_pid = self._get_process_id(self._app_package)
                 if self._target_pid > 0:
                     self._attach_app()
                     print(f'{self._app_package}[pid:{self._target_pid}] is already running...')
@@ -257,7 +265,7 @@ class FridaAgent:
         return self._target_pid > 0
 
     def _is_app_running(self):
-        pid = self._get_proecess_id(self._app_package)
+        pid = self._get_process_id(self._app_package)
         ret = (pid == self._target_pid)
         self._target_pid = pid
         return ret
@@ -267,14 +275,14 @@ class FridaAgent:
         if len(cmd) >= 2:
             key = ' '.join(cmd[1:])
             if key not in self._scripts_map.keys():
-                print(f'key:{Colors.keyword2}{key}{Colors.reset} not found')
+                print(f'key:{clr_bright_purple(key)} not found')
             else:
                 if self._scripts_map[key]['isEnable'] != isEnable:
                     self._scripts_map[key]['isEnable'] = isEnable
                     ret = True
                 else:
                     print(
-                        f'hook: {Colors.keyword3}{key}{Colors.reset} has already been set to {Colors.keyword2}{isEnable}{Colors.reset}')
+                        f'hook: {clr_bright_cyan(key)} has already been set to {clr_bright_purple(isEnable)}')
         else:
             self._print_internal_cmd_help()
         return ret
@@ -283,7 +291,7 @@ class FridaAgent:
         ret = False
         if len(cmd) == 2:
             if cmd[1] not in self._scripts_map.keys():
-                print(f'key:{Colors.keyword2}{cmd[1]}{Colors.reset} not found')
+                print(f'key:{clr_bright_purple(cmd[1])} not found')
             else:
                 del self._scripts_map[cmd[1]]
                 ret = True
@@ -324,11 +332,12 @@ class FridaAgent:
                 ret = True
                 break
             except Exception as e:
+                print(f'load:{e}')
                 time.sleep(1)
                 pass
+        self._script.exports.set_color_mode(get_color_mode())
         self._exec_script_cmd_after_load()
         self._scripts_map = Scriptor.clean_scripts_map(self._scripts_map)
-
         return ret
 
     def _unload_script(self):
@@ -343,21 +352,21 @@ class FridaAgent:
     def _print_internal_cmd_help():
         help_strs = [
             f'Usage: cmd [option]\ncmd:',
-            f'\n  {Colors.keyword}h{Colors.keyword3}elp{Colors.reset}\t\tshow this help message',
-            f'\n  {Colors.keyword}o{Colors.keyword3}ptions{Colors.reset}\tprint options',
-            f'\n  {Colors.keyword}l{Colors.keyword3}ist{Colors.reset}\t\tshow hook list',
-            f'\n  {Colors.keyword}c{Colors.keyword3}onfig <file>{Colors.reset}\tload the config file',
-            f'\n  {Colors.keyword}d{Colors.keyword3}isable <key>{Colors.reset}\tset disable the hook item by key',
-            f'\n  {Colors.keyword}e{Colors.keyword3}nable <key>{Colors.reset}\tset enable the hook item by key',
-            f'\n  {Colors.keyword3}re{Colors.keyword}m{Colors.keyword3}ove <key>{Colors.reset}\tremove the hook item by key',
-            f'\n  {Colors.keyword}r{Colors.keyword3}un [options]{Colors.reset}\trun hook option, see also <{Colors.keyword3}options{Colors.reset}>',
+            f'\n  {clr_yellow("h")}{clr_bright_cyan("elp")}\t\tshow this help message',
+            f'\n  {clr_yellow("o")}{clr_bright_cyan("ptions")}\tprint options',
+            f'\n  {clr_yellow("l")}{clr_bright_cyan("ist")}\t\tshow hook list',
+            f'\n  {clr_yellow("c")}{clr_bright_cyan("onfig <file>")}\tload the config file',
+            f'\n  {clr_yellow("d")}{clr_bright_cyan("isable <key>")}\tset disable the hook item by key',
+            f'\n  {clr_yellow("e")}{clr_bright_cyan("nable <key>")}\tset enable the hook item by key',
+            f'\n  {clr_bright_cyan("re")}{clr_yellow("m")}{clr_bright_cyan("ove <key>")}\tremove the hook item by key',
+            f'\n  {clr_yellow("r")}{clr_bright_cyan("un [options]")}\trun hook option, see also <{clr_bright_cyan("options")}>',
             f'\n       example: run --hook_class --class com.xxx.xxx.xxxxxx.Classxxx',
             f'\n                run --hook_func --class com.xxx.xxx.xxxxxx.Classxxx --func Funcxxx',
             f'\n                run --hook_so_func --module libxxx.so --func getSign',
             f'\n                run --hook_so_func --module libxxx.so --addr 0xedxxxxxx',
-            f'\n  {Colors.keyword3}re{Colors.keyword}s{Colors.keyword3}tart{Colors.reset}\trestart the hook session',
-            f'\n  {Colors.keyword3}cls{Colors.reset}\t\tclear screen',
-            f'\n  {Colors.keyword}q{Colors.keyword3}uit{Colors.reset}\t\tquit'
+            f'\n  {clr_bright_cyan("re")}{clr_yellow("s")}{clr_bright_cyan("tart")}\trestart the hook session',
+            f'\n  {clr_bright_cyan("cls")}\t\tclear screen',
+            f'\n  {clr_yellow("q")}{clr_bright_cyan("uit")}\t\tquit'
         ]
         print("".join(help_strs))
 
@@ -393,7 +402,7 @@ class FridaAgent:
                 elif cmd[0] == 'run' or cmd[0] == 'r':
                     self._exec_cmd_run(cmd)
                 else:
-                    print(f'{Colors.warning}unknown command!{Colors.reset}')
+                    print(f'{clr_bright_red("unknown command!")}')
                     self._print_internal_cmd_help()
 
         if self._keep_running and not self._is_app_running():
@@ -431,9 +440,9 @@ class FridaAgent:
         elif options.status_server:
             self.show_frida_server_status()
         elif options.list_app:
-            self.list_app(check_frida_server=False)
+            self.list_app(check_frida_server=True)
         elif options.list_process:
-            self.list_process(check_frida_server=False)
+            self.list_process(check_frida_server=True)
         else:
             self._parser.print_help()
 
@@ -450,16 +459,16 @@ class FridaAgent:
     def _print_hook_info(scripts_map):
         for key in scripts_map.keys():
             if scripts_map[key]['isEnable']:
-                print(f'[{Colors.title}✓{Colors.reset}] {Colors.keyword}{key}{Colors.reset}')
+                print(f'[{clr_bright_green("✓")}] {clr_yellow(key)}')
             else:
-                print(f'[{Colors.title}✗{Colors.reset}] {key}')
+                print(f'[{clr_bright_green("✗")}] {clr_dark_gray(key)}')
 
-    def _get_proecess_id(self, app):
+    def _get_process_id(self, app):
         pid = -1
         try:
             app_proc = self._device.get_process(app)
             pid = app_proc.pid
-        except Exception:
+        except Exception as e:
             pass
         return pid
 
@@ -480,11 +489,11 @@ class FridaAgent:
                     os.remove(tmp_so_path)
                 else:
                     os.rename(tmp_so_path, fixed_so_path)
-                print(
-                    f"{Colors.title}[DumpSo]: Base={info['base']}, Size={hex(info['size'])}, SavePath={Colors.path}{os.getcwd()}/{fixed_so_path}{Colors.reset}")
+                print(clr_bright_green(f'[DumpSo]: Base={info["base"]}, Size={hex(info["size"])}, SavePath=')
+                      + clr_bright_blue(clr_underline(f"{os.getcwd()}/{fixed_so_path}")))
             except Exception as e:
-                print(f"{Colors.warning}[Except] - {e}: {info}{Colors.reset}")
-            print_screen(f'{Colors.title}{module_name} dump finished!{Colors.reset}')
+                print(clr_bright_red(f"[Except] - {e}: {info}"))
+            print_screen(clr_bright_green(f'{module_name} dump finished!'))
 
     @staticmethod
     def _so_fix(source, output, base):
@@ -499,17 +508,17 @@ class FridaAgent:
 
     def _dump_dex(self):
         if self._enable_deep_search_for_dump_dex:
-            print(f"{Colors.keyword}[DEXDump]: deep search mode is enable, maybe wait long time.{Colors.reset}")
+            print(clr_yellow("[DEXDump]: deep search mode is enable, maybe wait long time."))
 
         mds = []
-        print(f'{Colors.title}scanning dex in memory...{Colors.reset}')
+        print(clr_bright_green('scanning dex in memory...'))
         matches = self._script.exports.scan_dex(self._enable_deep_search_for_dump_dex)
         for info in matches:
             try:
                 bs = self._script.exports.memory_dump(info['addr'], info['size'])
                 md = md5(bs)
                 if md in mds:
-                    print(f"{Colors.keyword}[DEXDump]: Skip duplicate dex {info['addr']}<{md}>{Colors.reset}")
+                    print(clr_yellow(f"[DEXDump]: Skip duplicate dex {info['addr']}<{md}>"))
                     continue
                 mds.append(md)
                 if not os.path.exists("./" + self._app_package + "/"):
@@ -517,11 +526,11 @@ class FridaAgent:
                 bs = self._dex_fix(bs)
                 with open(self._app_package + "/" + info['addr'] + ".dex", 'wb') as out:
                     out.write(bs)
-                print(
-                    f"{Colors.title}[DEXDump]: DexSize={hex(info['size'])}, DexMd5={md}, SavePath={Colors.path}{os.getcwd()}/{self._app_package}/{info['addr']}.dex{Colors.reset}")
+                print(clr_bright_green(f"[DEXDump]: DexSize={hex(info['size'])}, DexMd5={md}, SavePath=")
+                      + clr_bright_blue(clr_underline(os.getcwd()+'/'+self._app_package+'/'+info['addr']+'.dex')))
             except Exception as e:
-                print(f"{Colors.warning}[Except] - {e}: {info}{Colors.reset}")
-        print_screen(f'{Colors.title}Dex dump finished!{Colors.reset}')
+                print(clr_bright_red(f"[Except] - {e}: {info}"))
+        print_screen(clr_bright_green('Dex dump finished!'))
 
     @staticmethod
     def _dex_fix(dex_bytes):
@@ -550,32 +559,32 @@ class FridaAgent:
 
         running_group = OptionGroup(parser, 'Running Options')
         running_group.add_option("-S", "--spawn", action="store_true", dest="is_suspend", default=False,
-                          help='spawn mode of Frida, that suspend app during startup')
+                                 help='spawn mode of Frida, that suspend app during startup')
         running_group.add_option("-m", "--monochrome", action="store_true", dest="monochrome", default=False,
-                          help='set to monochrome mode')
+                                 help='set to monochrome mode')
         running_group.add_option("-h", "--host", action="store", type="string", dest="host", default="127.0.0.1",
-                          help='the ip of http server, default: 127.0.0.1')
+                                 help='the ip of http server, default: 127.0.0.1')
         running_group.add_option("-p", "--port", action="store", type="int", dest="port", default=8989,
-                          help='the port of http server, default: 8989')
+                                 help='the port of http server, default: 8989')
         running_group.add_option("", "--silence", action="store_true", dest="silence", default=False,
-                          help='no message is output to screen')
+                                 help='no message is output to screen')
         running_group.add_option("-d", "--show_detail", action="store_true", dest="show_detail", default=False,
-                          help='show and log the detail infomation')
+                                 help='show and log the detail infomation')
         running_group.add_option("-f", "--script_file", action="store", type="string", dest="file_script",
-                          help='set the script file include on_message')
+                                 help='set the script file include on_message')
         running_group.add_option("-c", "--config_file", action="store", type="string", dest="config",
-                          help='load the options from the config file')
+                                 help='load the options from the config file')
         running_group.add_option("-o", "--log_file", action="store", type="string", dest="log_file", default='',
-                          help='set log file')
+                                 help='set log file')
         parser.add_option_group(running_group)
 
         svr_group = OptionGroup(parser, 'Frida server Options')
         svr_group.add_option("", "--start_server", action="store_true", dest="start_server", default=False,
-                          help='start the frida server')
+                             help='start the frida server')
         svr_group.add_option("", "--stop_server", action="store_true", dest="stop_server", default=False,
-                          help='stop the frida server')
+                             help='stop the frida server')
         svr_group.add_option("", "--status_server", action="store_true", dest="status_server", default=False,
-                          help='get the status of frida server')
+                             help='get the status of frida server')
         parser.add_option_group(svr_group)
 
 

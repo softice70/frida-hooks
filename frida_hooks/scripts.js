@@ -1,3 +1,45 @@
+var _is_color_mode = true
+const clr_reset = () => _is_color_mode? "\x1B[0m": '';
+
+const clr_black = (text) => clr_ansify("\x1B[0;30m", text);
+const clr_dark_gray = (text) => clr_ansify("\x1B[1;30m", text);
+const clr_blue = (text) => clr_ansify("\x1B[0;34m", text);
+const clr_bright_blue = (text) => clr_ansify("\x1B[1;34m", text);
+const clr_green = (text) => clr_ansify("\x1B[0;32m", text);
+const clr_bright_green = (text) => clr_ansify("\x1B[1;32m", text);
+const clr_cyan = (text) => clr_ansify("\x1B[0;36m", text);
+const clr_bright_cyan = (text) => clr_ansify("\x1B[1;36m", text);
+const clr_red = (text) => clr_ansify("\x1B[0;31m", text);
+const clr_bright_red = (text) => clr_ansify("\x1B[1;31m", text);
+const clr_purple = (text) => clr_ansify("\x1B[0;35m", text);
+const clr_bright_purple = (text) => clr_ansify("\x1B[1;35m", text);
+const clr_brown = (text) => clr_ansify("\x1B[0;33m", text);
+const clr_yellow = (text) => clr_ansify("\x1B[1;33m", text);
+const clr_bright_gray = (text) => clr_ansify("\x1B[0;37m", text);
+const clr_white = (text) => clr_ansify("\x1B[1;37m", text);
+const clr_bg_black = (text) => clr_ansify("\x1B[40m", text);
+const clr_bg_red = (text) => clr_ansify("\x1B[41m", text);
+const clr_bg_green = (text) => clr_ansify("\x1B[42m", text);
+const clr_bg_yellow = (text) => clr_ansify("\x1B[43m", text);
+const clr_bg_blue = (text) => clr_ansify("\x1B[44m", text);
+const clr_bg_purple = (text) => clr_ansify("\x1B[45m", text);
+const clr_bg_cyan = (text) => clr_ansify("\x1B[46m", text);
+const clr_bg_white = (text) => clr_ansify("\x1B[47m", text);
+const clr_bright = (text) => clr_ansify("\x1B[1m", text);
+const clr_dim = (text) => clr_ansify("\x1B[2m", text);
+const clr_underline = (text) => clr_ansify("\x1B[4m", text);
+const clr_blink = (text) => clr_ansify("\x1B[5m", text);
+const clr_reverse = (text) => clr_ansify("\x1B[7m", text);
+const clr_strikethrough = (text) => clr_ansify("\x1B[9m", text);
+const clr_overline = (text) => clr_ansify("\x1B[53m", text);
+
+// return an ansified string
+const clr_ansify = (color, ...msg) => _is_color_mode? color + msg.join(``) + "\x1B[0m": msg.join(``);
+
+function set_color_mode(is_color_mode){
+    _is_color_mode = is_color_mode
+}
+
 function wrap_java_perform(fn){
   return new Promise((resolve, reject) => {
     Java.perform(() => {
@@ -273,7 +315,7 @@ function hook_func(class_name, method_name){
             console.log('error: ' + method_name + ' not found in ' + cls + '!')
         }else{
             var n_overload_cnt = cls[method_name].overloads.length;
-            console.log(col_hooked + cls + "." + method_name + "() is hooked..." + col_reset);
+            console.log(clr_yellow(clr_blink(  cls + "." + method_name + "() is hooked...")));
             for (var index = 0; index < n_overload_cnt; index++) {
                 cls[method_name].overloads[index].implementation = function () {
                     // 获取时间戳
@@ -305,7 +347,7 @@ function hook_class(class_name){
         var mhd_array = cls.class.getDeclaredMethods();
 
         //hook 类所有方法 （所有重载方法也要hook)
-        let hooked_methods = '';
+        let hooked_methods = [];
         for (var i = 0; i < mhd_array.length; i++){
             let mhd_cur = mhd_array[i]; //当前方法
             let str_mhd_name = mhd_cur.getName(); //当前方法名
@@ -330,10 +372,10 @@ function hook_class(class_name){
                     send(datas);
                     return ret;
                 }
-                hooked_methods = hooked_methods + col_keyword + str_mhd_name + col_reset + (n_overload_cnt > 0?"[" + index + "] \t" : ' \t');
+                hooked_methods.push("  " + clr_yellow(str_mhd_name) + (n_overload_cnt > 0?"[" + index + "] \t" : ' \t'));
             }
         }
-        console.log("methods:\n    " + hooked_methods + "\n" + col_hooked + cls + " is hooked..." + col_reset);
+        console.log("methods:\n" + hooked_methods.join("\n") + "\n" + clr_yellow(clr_blink(cls + " is hooked...")));
     });
 }
 
@@ -343,7 +385,7 @@ function hook_so_func(module_name, func_name, addr_str){
         var ptr_func = func_name != ''?
                         Module.findExportByName(module_name, func_name):
                         new NativePointer(addr_str);
-        console.log(col_hooked + module_name +": " + '[' + ptr_func + '] ' + func_name + " is hooked..." + col_reset);
+        console.log(clr_yellow(module_name +": " + '[' + ptr_func + '] ' + func_name + " is hooked..."));
         Interceptor.attach(ptr_func,{
             //onEnter: 进入该函数前要执行的代码，其中args是传入的参数，一般so层函数第一个参数都是JniEnv，第二个参数是jclass，从第三个参数开始是我们java层传入的参数
             onEnter: function(args) {
@@ -381,7 +423,7 @@ function hook_so(module_name){
                         send({type:"return", value:(ret!=null?ret.toString():"null"), hookName:"hook_so", funcName:func_name});
                     }
                 });
-                console.log(col_hooked + "%module_name%: " + '[' + ptr_func + '] ' + func_name + " is hooked..." + col_reset);
+                console.log(clr_yellow(module_name + '[' + ptr_func + '] ' + func_name + " is hooked..."));
             }
             catch(err){
             }
@@ -402,7 +444,7 @@ function hook_okhttp3_execute(){
             send_msg(datas)
             return response;
         }
-        console.log(col_hooked + "okhttp3.RealCall.execute() is hooked..." + col_reset);
+        console.log(clr_yellow(clr_blink("okhttp3.RealCall.execute() is hooked...")));
     });
 }
 
@@ -419,7 +461,7 @@ function hook_okhttp3_CallServer(){
             send_msg(datas)
             return response;
         }
-        console.log(col_hooked + "okhttp3.internal.http.CallServerInterceptor.intercept() is hooked..." + col_reset);
+        console.log(clr_yellow(clr_blink("okhttp3.internal.http.CallServerInterceptor.intercept() is hooked...")));
     });
 }
 
@@ -433,9 +475,10 @@ function hook_intercept(class_name){
             let datas = [];
             datas.push(gen_request_data(request, timestamp, class_name));
             datas.push(gen_response_data(response, timestamp, class_name));
+            send_msg(datas);
             return response;
         }
-        console.log(col_hooked + InterceptorClass + ".intercept() is hooked..." + col_reset);
+        console.log(clr_yellow(clr_blink(InterceptorClass + ".intercept() is hooked...")));
     });
 }
 
@@ -454,7 +497,7 @@ function dump_class(class_name){
         var cls = Java.use(class_name);
         var mhd_array = cls.class.getDeclaredMethods();
         var msgs = [];
-        msgs.push("------------  " + class_name + "  ------------");
+        msgs.push(clr_bright_green("------------  " + class_name + "  ------------"));
         //获取类的所有字段
         var fields = []
         var field_array = cls.class.getFields();
@@ -462,7 +505,7 @@ function dump_class(class_name){
             var field = field_array[i]; //当前成员
             var field_name = field.getName();
             var field_class = field.getType().getName();
-            msgs.push("field: " + col_keyword3 + field_name + col_reset + "\tclass: " + field_class);
+            msgs.push("  field: " + clr_bright_cyan(field_name) + "\tclass: " + clr_purple(field_class));
             fields.push({fieldName: field_name, fieldClass: field_class})
         }
         //hook 类所有方法 （所有重载方法也要hook)
@@ -472,7 +515,7 @@ function dump_class(class_name){
             var str_mhd_name = mhd_cur.getName(); //当前方法名
             //当前方法重载方法的个数
             var n_overload_cnt = cls[str_mhd_name].overloads.length;
-            msgs.push("method: " + col_keyword + str_mhd_name + col_reset + "()\toverload: " + n_overload_cnt);
+            msgs.push("  method: " + clr_yellow(str_mhd_name) + "()\toverload: " + clr_bright_blue(n_overload_cnt));
             methods.push({methodName: str_mhd_name, overloadCount: n_overload_cnt})
         }
         send(msgs.join("\n"));
@@ -485,7 +528,7 @@ function list_so(){
         var datas = [];
         Process.enumerateModules({
             onMatch: function(module){
-                msgs.push('    ' + col_keyword + module.name + col_reset + "\t" + module.base + "\t"+ module.size + "\t" + col_path + module.path + col_reset);
+                msgs.push('    ' + clr_yellow(module.name) + "\t" + module.base + "\t"+ module.size + "\t" + clr_bright_blue(clr_underline(module.path)));
                 datas.push(module)
             },
            onComplete: function(){ }
@@ -504,7 +547,7 @@ function dump_so(module_name, file_path){
             file_handle.write(libso_buffer);
             file_handle.flush();
             file_handle.close();
-            console.log("dump finished!\noutput: " + col_path + file_path + col_reset);
+            console.log("dump finished!\noutput: " + clr_bright_blue(clr_underline(file_path)));
         }else{
             console.log("failed to dump " + module_name + " to file - " + file_path);
         }
@@ -523,27 +566,27 @@ function list_so_func(module_name){
     return wrap_java_perform(() => {
         var datas = [];
         var libxx = Process.getModuleByName(module_name);
-        datas.push(col_title+"--------------------------  " + libxx.name + "  --------------------------"+col_reset);
-        datas.push("    "+col_column+"name"+col_reset+": " + col_keyword + libxx.name + col_reset);
-        datas.push("    "+col_column+"base"+col_reset+": " + col_keyword + libxx.base + col_reset);
-        datas.push("    "+col_column+"size"+col_reset+": " + col_keyword + ptr(libxx.size) + col_reset);
-        datas.push(col_title+"--------------------------  exports  --------------------------"+col_reset);
-        datas.push("    "+col_column+"address\toffset\tfunction"+col_reset);
+        datas.push(clr_bright_green("--------------------------  " + libxx.name + "  --------------------------"));
+        datas.push("    "+clr_bright_gray(clr_reverse("name"))+": " + clr_yellow(libxx.name));
+        datas.push("    "+clr_bright_gray(clr_reverse("base"))+": " + clr_yellow(libxx.base));
+        datas.push("    "+clr_bright_gray(clr_reverse("size"))+": " + clr_yellow(ptr(libxx.size)));
+        datas.push(clr_bright_green("--------------------------  exports  --------------------------"));
+        datas.push("    "+clr_bright_gray(clr_reverse("address\toffset\tfunction")));
 
         var exports = libxx.enumerateExports();
         for(var i = 0; i < exports.length; i++) {
-            datas.push("    "+exports[i].address+"\t"+ptr(exports[i].address-libxx.base)+"\t"+col_keyword+exports[i].name+col_reset);
+            datas.push("    "+exports[i].address+"\t"+ptr(exports[i].address-libxx.base)+"\t"+clr_yellow(exports[i].name));
         }
 
-        datas.push(col_title+"--------------------------  imports  --------------------------"+col_reset);
-        datas.push("    "+col_column+"address\tmodule\t\t\tfunction"+col_reset);
+        datas.push(clr_bright_green("--------------------------  imports  --------------------------"));
+        datas.push("    "+clr_bright_gray(clr_reverse("address\tmodule\t\t\tfunction")));
         var imports =  libxx.enumerateImports();
         for(var i = 0; i < imports.length; i++) {
-            datas.push("    "+imports[i].address+"\t"+col_path+imports[i].module+col_reset+"\t"+col_keyword+imports[i].name+col_reset);
+            datas.push("    "+imports[i].address+"\t"+clr_bright_blue(clr_underline(imports[i].module))+"\t"+clr_yellow(imports[i].name));
          }
         /* 暂时没有发现实用价值，先注释掉 by Ryan
-        datas.push(col_title+"--------------------------  symbols  --------------------------"+col_reset);
-        datas.push("    "+col_column+"address\ttype\tname\tis_global\tsection"+col_reset);
+        datas.push(clr_bright_green("--------------------------  symbols  --------------------------"));
+        datas.push("    "+clr_bright_gray(clr_reverse("address\ttype\tname\tis_global\tsection")));
         var symbols = libxx.enumerateSymbols();
         for(var i = 0; i < symbols.length; i++) {
             datas.push("    "+symbols[i].address+"\t"+symbols[i].type+"\t"+symbols[i].name+"\t"+symbols[i].isGlobal+"\t"+JSON.stringify(symbols[i].section));
@@ -752,7 +795,7 @@ function hook_RegisterNatives() {
                     symbol.name.indexOf("RegisterNatives") >= 0 &&
                     symbol.name.indexOf("CheckJNI") < 0) {
                 addrRegisterNatives = symbol.address;
-                console.log(col_hooked, "RegisterNatives is hooked at ", col_keyword3, symbol.address, symbol.name, col_reset);
+                console.log(clr_yellow(clr_blink("RegisterNatives is hooked at "))+clr_bright_cyan(symbol.address+symbol.name));
             }
         }
 

@@ -17,7 +17,7 @@ logger = logging.getLogger()
 
 def print_screen(text, is_show_prompt=True):
     if isinstance(text, str):
-        print(text.encode('gbk', 'ignore').decode('gbk'))
+        print(f"\r{text.encode('gbk', 'ignore').decode('gbk')}")
     elif isinstance(text, bytes):
         print(text.decode("gbk", "ignore"))
     else:
@@ -100,16 +100,8 @@ def init_logger(log_file):
 
 def write_log(text):
     if isinstance(text, str):
-        text = text.replace(Colors.hooked, '') \
-            .replace(Colors.keyword, '') \
-            .replace(Colors.keyword2, '') \
-            .replace(Colors.keyword3, '') \
-            .replace(Colors.path, '') \
-            .replace(Colors.title, '') \
-            .replace(Colors.column, '') \
-            .replace(Colors.warning, '') \
-            .replace(Colors.exit, '') \
-            .replace(Colors.reset, '')
+        for key in ansi_colors.keys():
+            text = text.replace(ansi_colors[key], '')
         logger.info(text)
 
 
@@ -122,12 +114,12 @@ def parse_request(data):
     for key in ['method', 'url', 'headers', 'body']:
         if key != 'headers':
             if len(data[key]) > 0:
-                param = f'{Colors.keyword}{key}{Colors.reset}: {data[key].strip()}'
+                param = f'  {clr_bright_cyan(key)}: {data[key].strip()}'
             else:
                 continue
         else:
             headers = data['headers'].strip().replace("\n", ", ")
-            param = f'{Colors.keyword}headers{Colors.reset}: {headers}'
+            param = f'  {clr_bright_cyan("headers")}: {headers}'
         param_infos.append(param)
     return param_infos
 
@@ -140,10 +132,10 @@ def parse_response(data):
         param_infos.append(param)
     if 'headers' in data.keys():
         headers = data['headers'].strip().replace("\n", ", ")
-        param = f'{Colors.keyword}headers{Colors.reset}: {headers}'
+        param = f'  {clr_bright_cyan("headers")}: {headers}'
         param_infos.append(param)
     if 'body' in data.keys() and len(data['body']) > 0:
-        param = f'{Colors.keyword}body{Colors.reset}: {data["body"].strip()}'
+        param = f'  {clr_bright_cyan("body")}: {data["body"].strip()}'
         param_infos.append(param)
     return param_infos
 
@@ -151,7 +143,7 @@ def parse_response(data):
 def __get_param_from_request(request):
     key, request = __get_key_from_request(request)
     value, request = __get_value_from_request(request)
-    param = f'{Colors.keyword}{key}{Colors.reset}: {value}'
+    param = f'  {clr_bright_cyan(key)}: {value}'
     return param, request
 
 
