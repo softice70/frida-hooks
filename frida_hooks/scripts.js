@@ -435,10 +435,11 @@ function hook_okhttp3_execute(){
     return wrap_java_perform(() => {
         var RealCallClass = Java.use('okhttp3.RealCall');
         RealCallClass.execute.implementation = function(){
-            var response = this.execute();
-            var timestamp = (new Date()).getTime();
-            var request = this.request();
             let datas = [];
+            var timestamp = (new Date()).getTime();
+            datas.push({type:"stack", data:get_stack_trace(), timestamp:timestamp});
+            var response = this.execute();
+            var request = this.request();
             datas.push(gen_request_data(request, timestamp, 'Execute'));
             datas.push(gen_response_data(response, timestamp, 'Execute'));
             send_msg(datas)
@@ -452,10 +453,11 @@ function hook_okhttp3_CallServer(){
     return wrap_java_perform(() => {
         var InterceptorClass = Java.use("okhttp3.internal.http.CallServerInterceptor");
         InterceptorClass.intercept.implementation=function(chain){
+            let datas = [];
             var timestamp = (new Date()).getTime();
+            datas.push({type:"stack", data:get_stack_trace(), timestamp:timestamp});
             var request = chain.request();
             var response = this.intercept(chain);
-            let datas = [];
             datas.push(gen_request_data(request, timestamp, 'CallServer'));
             datas.push(gen_response_data(response, timestamp, 'CallServer'));
             send_msg(datas)

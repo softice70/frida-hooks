@@ -275,7 +275,17 @@ class FridaAgent:
         if len(cmd) >= 2:
             key = ' '.join(cmd[1:])
             if key not in self._scripts_map.keys():
-                print(f'key:{clr_bright_purple(key)} not found')
+                if key == '*':
+                    for k in self._scripts_map.keys():
+                        self._scripts_map[k]['isEnable'] = isEnable
+                        ret = True
+                elif is_number(key):
+                    for k in self._scripts_map.keys():
+                        if self._scripts_map[k]["id"] == int(key):
+                            self._scripts_map[k]['isEnable'] = isEnable
+                            ret = True
+                if not ret:
+                    print(f'key:{clr_bright_purple(key)} not found')
             else:
                 if self._scripts_map[key]['isEnable'] != isEnable:
                     self._scripts_map[key]['isEnable'] = isEnable
@@ -285,6 +295,8 @@ class FridaAgent:
                         f'hook: {clr_bright_cyan(key)} has already been set to {clr_bright_purple(isEnable)}')
         else:
             self._print_internal_cmd_help()
+        if ret:
+            self._print_hook_info(self._scripts_map)
         return ret
 
     def _exec_cmd_remove_hook_item(self, cmd):
@@ -457,11 +469,14 @@ class FridaAgent:
 
     @staticmethod
     def _print_hook_info(scripts_map):
+        _id = 0
         for key in scripts_map.keys():
+            scripts_map[key]["id"] = _id
+            _id += 1
             if scripts_map[key]['isEnable']:
-                print(f'[{clr_bright_green("✓")}] {clr_yellow(key)}')
+                print(f'{scripts_map[key]["id"]:>3}[{clr_bright_green("✓")}] {clr_yellow(key)}')
             else:
-                print(f'[{clr_bright_green("✗")}] {clr_dark_gray(key)}')
+                print(f'{scripts_map[key]["id"]:>3}[{clr_bright_green("✗")}] {clr_dark_gray(key)}')
 
     def _get_process_id(self, app):
         pid = -1
