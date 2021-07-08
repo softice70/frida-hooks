@@ -74,6 +74,7 @@ function get_fields(_this, field_array){
     let fields = {};
     for (var i = 0; i < field_array.length; i++){
         let field = field_array[i]; //当前成员
+        field.setAccessible(true);
         let field_name = field.getName();
         let class_name = field.getType().getName();
         let field_val = 'UNKNOWN'
@@ -87,6 +88,40 @@ function get_fields(_this, field_array){
     }
     return fields;
 }
+
+//获取字段信息
+function get_fields_ex(_this){
+    let fields = {};
+    var cls = null;
+    try {
+        cls = _this.getClass();
+    } catch (e) {
+    }
+
+    while (cls !== null && !cls.equals(Java.use("java.lang.Object").class)) {
+        var class_name = cls.getName();
+        var field_array = cls.getDeclaredFields();
+        for (var i = 0; i < field_array.length; i++){
+            let field = field_array[i]; //当前成员
+            field.setAccessible(true);
+            let field_name = field.getName();
+            let field_class_name = field.getType().getName();
+            let key = class_name + '.' + field_name;
+            let field_val = 'UNKNOWN'
+            try {
+                let field_val_obj = field.get(_this);
+                field_val = field_val_obj == null? field_val_obj: field_val_obj.toString();
+            }
+            catch(err){
+            }
+            fields[key] = {field: field_name, class: field_class_name, value: field_val};
+        }
+        break;
+        cls = cls.getSuperclass();
+    }
+    return fields;
+}
+
 
 //获取参数
 function get_arguments(arg_list, arg_cnt){
@@ -311,29 +346,31 @@ function hook_func(class_name, method_name){
     return wrap_java_perform(() => {
         var cls = Java.use(class_name);
         var field_array = cls.class.getFields();
+        var full_func_name = class_name + '.' + method_name;
         if(cls[method_name] == undefined){
-            console.log('error: ' + method_name + ' not found in ' + cls + '!')
+            console.log('error: ' + full_func_name + ' not found in ' + cls + '!')
         }else{
             var n_overload_cnt = cls[method_name].overloads.length;
-            console.log(clr_yellow(clr_blink(  cls + "." + method_name + "() is hooked...")));
             for (var index = 0; index < n_overload_cnt; index++) {
                 cls[method_name].overloads[index].implementation = function () {
                     // 获取时间戳
                     var timestamp = (new Date()).getTime();
                     var datas = [];
-                    datas.push({type:"stack", data:get_stack_trace(), timestamp:timestamp, hookName:"hook_func", funcName:method_name});
+                    datas.push({type:"stack", data:get_stack_trace(), timestamp:timestamp, hookName:"hook_func", funcName:full_func_name});
                     let args_before = get_arguments(arguments, arguments.length);
-                    let fields_before = get_fields(this, field_array);
+                    let fields_before = get_fields_ex(this);
                     //调用原应用的方法
                     let ret = this[method_name].apply(this, arguments);
                     let args_after = get_arguments(arguments, arguments.length);
-                    let fields_after = get_fields(this, field_array);
-                    datas.push({type:"arguments", before:JSON.stringify(args_before), after:JSON.stringify(args_after), timestamp:timestamp, hookName:"hook_func", funcName:method_name});
-                    datas.push({type:"fields", before:JSON.stringify(fields_before), after:JSON.stringify(fields_after), timestamp:timestamp, hookName:"hook_func", funcName:method_name});
-                    datas.push({type:"return", value:(ret!=null?ret.toString():"null"), timestamp:timestamp, hookName:"hook_func", funcName:method_name});
+                    let fields_after = get_fields_ex(this,);
+                    let ret_fields = get_fields_ex(ret);
+                    datas.push({type:"arguments", before:JSON.stringify(args_before), after:JSON.stringify(args_after), timestamp:timestamp, hookName:"hook_func", funcName:full_func_name});
+                    datas.push({type:"fields", before:JSON.stringify(fields_before), after:JSON.stringify(fields_after), timestamp:timestamp, hookName:"hook_func", funcName:full_func_name});
+                    datas.push({type:"return", value:(ret!=null?ret.toString():"null"), fields:JSON.stringify(ret_fields), timestamp:timestamp, hookName:"hook_func", funcName:full_func_name});
                     send(datas);
                     return ret;
                 }
+                console.log(clr_yellow(clr_blink(  cls + "." + full_func_name + "() [" + index +  "] is hooked...")));
             }
         }
     });
@@ -356,19 +393,21 @@ function hook_class(class_name){
             let n_overload_cnt = cls[str_mhd_name].overloads.length;
             for (var index = 0; index < n_overload_cnt; index++){
                 cls[str_mhd_name].overloads[index].implementation = function (){
+                    var full_func_name = class_name + '.' + str_mhd_name;
                     // 获取时间戳
                     var timestamp = (new Date()).getTime();
                     var datas = [];
-                    datas.push({type:"stack", data:get_stack_trace(), timestamp:timestamp, hookName:"hook_class", funcName:str_mhd_name});
+                    datas.push({type:"stack", data:get_stack_trace(), timestamp:timestamp, hookName:"hook_class", funcName:full_func_name});
                     let args_before = get_arguments(arguments, arguments.length);
-                    let fields_before = get_fields(this, field_array);
+                    let fields_before = get_fields_ex(this);
                     //调用原应用的方法
                     let ret = this[str_mhd_name].apply(this, arguments);
                     let args_after = get_arguments(arguments, arguments.length);
-                    let fields_after = get_fields(this, field_array);
-                    datas.push({type:"arguments", before:JSON.stringify(args_before), after:JSON.stringify(args_after), timestamp:timestamp, hookName:"hook_class", funcName:str_mhd_name});
-                    datas.push({type:"fields", before:JSON.stringify(fields_before), after:JSON.stringify(fields_after), timestamp:timestamp, hookName:"hook_class", funcName:str_mhd_name});
-                    datas.push({type:"return", value:(ret!=null?ret.toString():"null"), timestamp:timestamp, hookName:"hook_class", funcName:str_mhd_name});
+                    let fields_after = get_fields_ex(this);
+                    let ret_fields = get_fields_ex(ret);
+                    datas.push({type:"arguments", before:JSON.stringify(args_before), after:JSON.stringify(args_after), timestamp:timestamp, hookName:"hook_class", funcName:full_func_name});
+                    datas.push({type:"fields", before:JSON.stringify(fields_before), after:JSON.stringify(fields_after), timestamp:timestamp, hookName:"hook_class", funcName:full_func_name});
+                    datas.push({type:"return", value:(ret!=null?ret.toString():"null"), fields:JSON.stringify(ret_fields), timestamp:timestamp, hookName:"hook_class", funcName:full_func_name});
                     send(datas);
                     return ret;
                 }
@@ -503,7 +542,7 @@ function dump_class(class_name){
         //获取类的所有字段
         var fields = []
         var field_array = cls.class.getFields();
-        for (var i = 0; i < field_array.length; i++){
+        for (var i = 0; i < field_array.length; i++) {
             var field = field_array[i]; //当前成员
             var field_name = field.getName();
             var field_class = field.getType().getName();
@@ -512,7 +551,7 @@ function dump_class(class_name){
         }
         //hook 类所有方法 （所有重载方法也要hook)
         var methods = [];
-        for (var i = 0; i < mhd_array.length; i++){
+        for (var i = 0; i < mhd_array.length; i++) {
             var mhd_cur = mhd_array[i]; //当前方法
             var str_mhd_name = mhd_cur.getName(); //当前方法名
             //当前方法重载方法的个数

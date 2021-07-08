@@ -114,6 +114,7 @@ class FridaAgent:
                 else:
                     self._app_package = args[0]
                     self._load_options(options)
+                    self._keep_running = True
                 if self._keep_running:
                     self._keep_running = self._start_app(is_suspend=options.is_suspend)
                 self._start_http_server()
@@ -280,10 +281,14 @@ class FridaAgent:
                         self._scripts_map[k]['isEnable'] = isEnable
                         ret = True
                 elif is_number(key):
+                    real_key = None
                     for k in self._scripts_map.keys():
                         if self._scripts_map[k]["id"] == int(key):
-                            self._scripts_map[k]['isEnable'] = isEnable
-                            ret = True
+                            real_key = k
+                            break
+                    if real_key:
+                        self._scripts_map[k]['isEnable'] = isEnable
+                        ret = True
                 if not ret:
                     print(f'key:{clr_bright_purple(key)} not found')
             else:
@@ -301,11 +306,25 @@ class FridaAgent:
 
     def _exec_cmd_remove_hook_item(self, cmd):
         ret = False
-        if len(cmd) == 2:
-            if cmd[1] not in self._scripts_map.keys():
-                print(f'key:{clr_bright_purple(cmd[1])} not found')
+        if len(cmd) >= 2:
+            key = ' '.join(cmd[1:])
+            if key not in self._scripts_map.keys():
+                if key == '*':
+                    self._scripts_map.clear()
+                    ret = True
+                elif is_number(key):
+                    real_key = None
+                    for k in self._scripts_map.keys():
+                        if self._scripts_map[k]["id"] == int(key):
+                            real_key = k
+                            break
+                    if real_key:
+                        del self._scripts_map[real_key]
+                        ret = True
+                if not ret:
+                    print(f'key:{clr_bright_purple(key)} not found')
             else:
-                del self._scripts_map[cmd[1]]
+                del self._scripts_map[key]
                 ret = True
         else:
             self._print_internal_cmd_help()

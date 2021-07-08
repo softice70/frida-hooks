@@ -157,7 +157,8 @@ class Scriptor:
         script = None
         cmd = Scriptor._get_option(options, "cmd")
         if cmd == '' or (cmd != 'custom' and not Scriptor._get_cmd_info(cmd)):
-            print(clr_bright_red(f'unknown option, please see {clr_bright_cyan("options")}'))
+            if cmd != '':
+                print(clr_bright_red(f'unknown option, please see {clr_bright_cyan("options")}'))
             return script
         script_str = fun_on_msg = None
         file_script = Scriptor._get_option(options, "file_script")
@@ -290,11 +291,12 @@ class Scriptor:
                 fields_after = json.loads(msg_data['after']) if 'after' in msg_data.keys() else fields_before
                 field_list = []
                 for key in fields_before.keys():
+                    field_name = fields_before[key]['field'] if 'field' in fields_before[key].keys() else key
                     if fields_before[key]['value'] == fields_after[key]['value']:
-                        field_info = "  field: " + clr_bright_cyan(key) + "\tclass: " + fields_before[key]['class'] \
+                        field_info = "  field: " + clr_bright_cyan(field_name) + "\tclass: " + fields_before[key]['class'] \
                                      + "\tvalue: " + clr_bright_purple(str(fields_before[key]['value']))
                     else:
-                        field_info = " *field: " + clr_bright_cyan(key) + "\tclass: " + fields_before[key]['class'] \
+                        field_info = " *field: " + clr_bright_cyan(field_name) + "\tclass: " + fields_before[key]['class'] \
                                 + "\n    value_before: " + clr_bright_purple(str(fields_before[key]['value'])) \
                                 + "\n    value_after : " + clr_bright_purple(str(fields_after[key]['value']))
                     field_list.append(field_info)
@@ -303,9 +305,18 @@ class Scriptor:
                                                  + f'{_underline}\n') + '\n'.join(field_list)
             elif msg_data['type'] == 'return':
                 timestamp = ("[" + str(msg_data['timestamp']) + "]") if 'timestamp' in msg_data.keys() else ""
+                field_list = []
+                if Scriptor._show_detail:
+                    fields = json.loads(msg_data['fields'])
+                    for key in fields.keys():
+                        field_name = fields[key]['field'] if 'field' in fields[key].keys() else key
+                        field_info = "  field: " + clr_bright_cyan(field_name) + "\tclass: " + fields[key]['class'] \
+                                     + "\tvalue: " + clr_bright_purple(str(fields[key]['value']))
+                        field_list.append(field_info)
                 hook_name = msg_data["funcName"] if 'hookName' in msg_data.keys() else ''
                 text_to_print = clr_bright_green(f'{_underline}{"return: %s %s" % (hook_name, timestamp):^40}'
-                                                 + f'{_underline}') + "\n  return: " + clr_yellow(msg_data['value'])
+                                                 + f'{_underline}') + "\n" + clr_yellow(msg_data['value']) \
+                                                 + '\n' + '\n'.join(field_list)
             elif msg_data['type'] == 'registerNatives':
                 methods = json.loads(msg_data['methods'])
                 method_infos = []
