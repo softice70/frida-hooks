@@ -262,20 +262,6 @@ class Scriptor:
                 hook_name = msg_data["funcName"] if 'hookName' in msg_data.keys() else ''
                 text_to_print = clr_bright_green(f'{_underline}{"stack: %s %s" % (hook_name, timestamp):^40}'
                                                  + f'{_underline}\n  ') + '\n  '.join(straces)
-            elif msg_data['type'] == 'arguments':
-                timestamp = ("[" + str(msg_data['timestamp']) + "]") if 'timestamp' in msg_data.keys() else ""
-                args_before = json.loads(msg_data['before'])
-                args_after = json.loads(msg_data['after'])
-                arg_list = []
-                for key in args_before.keys():
-                    if args_before[key] == args_after[key]:
-                        arg_list.append('  ' + key + '\t' + clr_yellow(str(args_before[key])))
-                    else:
-                        arg_list.append(' *' + key + '\n    before: ' + clr_yellow(str(args_before[key])) \
-                                        + '\n     after: ' + clr_yellow(str(args_after[key])))
-                hook_name = msg_data["funcName"] if 'hookName' in msg_data.keys() else ''
-                text_to_print = clr_bright_green(f'{_underline}{"arguments: %s %s" % (hook_name, timestamp):^40}'
-                                                 + f'{_underline}\n') + '\n'.join(arg_list)
             elif msg_data['type'] == 'asm_args':
                 timestamp = ("[" + str(msg_data['timestamp']) + "]") if 'timestamp' in msg_data.keys() else ""
                 args = msg_data['data']
@@ -285,21 +271,32 @@ class Scriptor:
                 hook_name = msg_data["funcName"] if 'hookName' in msg_data.keys() else ''
                 text_to_print = clr_bright_green(f'{_underline}{"arguments: %s %s" % (hook_name, timestamp):^40}'
                                                  + f'{_underline}\n') + '\n'.join(arg_list)
+            elif msg_data['type'] == 'arguments':
+                timestamp = ("[" + str(msg_data['timestamp']) + "]") if 'timestamp' in msg_data.keys() else ""
+                args_before = json.loads(msg_data['before'])
+                args_after = json.loads(msg_data['after'])
+                arg_list = []
+                for key in args_before.keys():
+                    arg_class = f"\t{args_before[key]['class']}" if len(args_before[key]['class']) > 0 else ''
+                    if args_before[key]['value'] == args_after[key]['value']:
+                        arg_list.append(f'  {key}{arg_class}\t{clr_yellow(str(args_before[key]["value"]))}')
+                    else:
+                        arg_list.append(' *' + key + arg_class + '\n    before: ' \
+                                        + clr_yellow(str(args_before[key]["value"])) \
+                                        + '\n     after: ' + clr_yellow(str(args_after[key]["value"])))
+                    if Scriptor._show_detail and len(args_before[key]['fields'].keys()) > 0:
+                        fields_before = args_before[key]['fields']
+                        fields_after = args_after[key]['fields']
+                        field_list = Scriptor.__prepare_fields_msg(fields_before, fields_after, "\t    └")
+                        arg_list += field_list
+                hook_name = msg_data["funcName"] if 'hookName' in msg_data.keys() else ''
+                text_to_print = clr_bright_green(f'{_underline}{"arguments: %s %s" % (hook_name, timestamp):^40}'
+                                                 + f'{_underline}\n') + '\n'.join(arg_list)
             elif msg_data['type'] == 'fields' and Scriptor._show_detail:
                 timestamp = ("[" + str(msg_data['timestamp']) + "]") if 'timestamp' in msg_data.keys() else ""
                 fields_before = json.loads(msg_data['before'])
                 fields_after = json.loads(msg_data['after']) if 'after' in msg_data.keys() else fields_before
-                field_list = []
-                for key in fields_before.keys():
-                    field_name = fields_before[key]['field'] if 'field' in fields_before[key].keys() else key
-                    if fields_before[key]['value'] == fields_after[key]['value']:
-                        field_info = "  field: " + clr_bright_cyan(field_name) + "\tclass: " + fields_before[key]['class'] \
-                                     + "\tvalue: " + clr_bright_purple(str(fields_before[key]['value']))
-                    else:
-                        field_info = " *field: " + clr_bright_cyan(field_name) + "\tclass: " + fields_before[key]['class'] \
-                                + "\n    value_before: " + clr_bright_purple(str(fields_before[key]['value'])) \
-                                + "\n    value_after : " + clr_bright_purple(str(fields_after[key]['value']))
-                    field_list.append(field_info)
+                field_list = Scriptor.__prepare_fields_msg(fields_before, fields_after)
                 hook_name = msg_data["funcName"] if 'hookName' in msg_data.keys() else ''
                 text_to_print = clr_bright_green(f'{_underline}{"fields: %s %s" % (hook_name, timestamp):^40}'
                                                  + f'{_underline}\n') + '\n'.join(field_list)
@@ -310,7 +307,7 @@ class Scriptor:
                     fields = json.loads(msg_data['fields'])
                     for key in fields.keys():
                         field_name = fields[key]['field'] if 'field' in fields[key].keys() else key
-                        field_info = "  field: " + clr_bright_cyan(field_name) + "\tclass: " + fields[key]['class'] \
+                        field_info = "  └ field: " + clr_bright_cyan(field_name) + "\tclass: " + fields[key]['class'] \
                                      + "\tvalue: " + clr_bright_purple(str(fields[key]['value']))
                         field_list.append(field_info)
                 hook_name = msg_data["funcName"] if 'hookName' in msg_data.keys() else ''
@@ -341,6 +338,21 @@ class Scriptor:
         if not Scriptor._is_silence:
             print_screen(text_to_print.encode('gbk', 'ignore').decode('gbk'))
         write_log(text_to_print)
+
+    @staticmethod
+    def __prepare_fields_msg(fields_before, fields_after, prefix=" "):
+        field_list = []
+        for key in fields_before.keys():
+            field_name = fields_before[key]['field'] if 'field' in fields_before[key].keys() else key
+            if fields_before[key]['value'] == fields_after[key]['value']:
+                field_info = prefix + " field: " + clr_bright_cyan(field_name) + "\tclass: " + fields_before[key]['class'] \
+                             + "\tvalue: " + clr_bright_purple(str(fields_before[key]['value']))
+            else:
+                field_info = prefix + "*field: " + clr_bright_cyan(field_name) + "\tclass: " + fields_before[key]['class'] \
+                             + "\n    value_before: " + clr_bright_purple(str(fields_before[key]['value'])) \
+                             + "\n    value_after : " + clr_bright_purple(str(fields_after[key]['value']))
+            field_list.append(field_info)
+        return field_list
 
     @staticmethod
     def __get_print_text_for_dict(msg_data):

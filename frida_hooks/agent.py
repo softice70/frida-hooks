@@ -429,7 +429,7 @@ class FridaAgent:
                 elif cmd[0] == 'restart' or cmd[0] == 's':
                     break
                 elif cmd[0] == 'cls':
-                    os.system('clear')
+                    os.system('cls')
                 elif cmd[0] == 'run' or cmd[0] == 'r':
                     self._exec_cmd_run(cmd)
                 else:

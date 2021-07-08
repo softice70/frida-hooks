@@ -128,6 +128,23 @@ function get_arguments(arg_list, arg_cnt){
     let args = {};
     //获取参数
     for (var idx_arg = 0; idx_arg < arg_cnt; idx_arg++) {
+        var class_name = '';
+        var fields = {};
+        try {
+            class_name = arg_list[idx_arg].getClass();
+            fields = get_fields_ex(arg_list[idx_arg]);
+        } catch (e) {
+        }
+        args[idx_arg] = {class: class_name, value: '' + arg_list[idx_arg], fields: fields};
+    }
+    return args;
+}
+
+//获取参数
+function get_arguments_for_so(arg_list, arg_cnt){
+    let args = {};
+    //获取参数
+    for (var idx_arg = 0; idx_arg < arg_cnt; idx_arg++) {
         args[idx_arg] = '' + arg_list[idx_arg];
     }
     return args;
@@ -381,19 +398,19 @@ function hook_class(class_name){
         //获取类的所有方法
         var cls = Java.use(class_name);
         var field_array = cls.class.getFields();
-        var mhd_array = cls.class.getDeclaredMethods();
+        var method_array = cls.class.getDeclaredMethods();
 
         //hook 类所有方法 （所有重载方法也要hook)
         let hooked_methods = [];
-        for (var i = 0; i < mhd_array.length; i++){
-            let mhd_cur = mhd_array[i]; //当前方法
-            let str_mhd_name = mhd_cur.getName(); //当前方法名
+        for (var i = 0; i < method_array.length; i++){
+            let cur_method = method_array[i]; //当前方法
+            let str_method_name = cur_method.getName(); //当前方法名
 
             //当前方法重载方法的个数
-            let n_overload_cnt = cls[str_mhd_name].overloads.length;
+            let n_overload_cnt = cls[str_method_name].overloads.length;
             for (var index = 0; index < n_overload_cnt; index++){
-                cls[str_mhd_name].overloads[index].implementation = function (){
-                    var full_func_name = class_name + '.' + str_mhd_name;
+                cls[str_method_name].overloads[index].implementation = function (){
+                    var full_func_name = class_name + '.' + str_method_name;
                     // 获取时间戳
                     var timestamp = (new Date()).getTime();
                     var datas = [];
@@ -401,7 +418,7 @@ function hook_class(class_name){
                     let args_before = get_arguments(arguments, arguments.length);
                     let fields_before = get_fields_ex(this);
                     //调用原应用的方法
-                    let ret = this[str_mhd_name].apply(this, arguments);
+                    let ret = this[str_method_name].apply(this, arguments);
                     let args_after = get_arguments(arguments, arguments.length);
                     let fields_after = get_fields_ex(this);
                     let ret_fields = get_fields_ex(ret);
@@ -411,7 +428,7 @@ function hook_class(class_name){
                     send(datas);
                     return ret;
                 }
-                hooked_methods.push("  " + clr_yellow(str_mhd_name) + (n_overload_cnt > 0?"[" + index + "] \t" : ' \t'));
+                hooked_methods.push("  " + clr_yellow(str_method_name) + (n_overload_cnt > 0?"[" + index + "] \t" : ' \t'));
             }
         }
         console.log("methods:\n" + hooked_methods.join("\n") + "\n" + clr_yellow(clr_blink(cls + " is hooked...")));
@@ -430,7 +447,7 @@ function hook_so_func(module_name, func_name, addr_str){
             onEnter: function(args) {
                 var datas = [];
                 datas.push({type:"stack", data:get_stack_trace(), hookName:"hook_so_func", funcName:func_name});
-                let args_list = get_arguments(args, 4);
+                let args_list = get_arguments_for_so(args, 4);
                 datas.push({type:"asm_args", data:args_list, hookName:"hook_so_func", funcName:func_name});
                 send(datas);
             },
@@ -454,7 +471,7 @@ function hook_so(module_name){
                     onEnter: function(args) {
                         var datas = [];
                         datas.push({type:"stack", data:get_stack_trace(), hookName:"hook_so", funcName:func_name});
-                        let args_list = get_arguments(args, 4);
+                        let args_list = get_arguments_for_so(args, 4);
                         datas.push({type:"asm_args", data:args_list, hookName:"hook_so", funcName:func_name});
                         send(datas);
                     },
@@ -536,7 +553,8 @@ function dump_class(class_name){
     return wrap_java_perform(() => {
         //获取类的所有方法
         var cls = Java.use(class_name);
-        var mhd_array = cls.class.getDeclaredMethods();
+        var Modifier = Java.use("java.lang.reflect.Modifier");
+        var method_array = cls.class.getDeclaredMethods();
         var msgs = [];
         msgs.push(clr_bright_green("------------  " + class_name + "  ------------"));
         //获取类的所有字段
@@ -546,18 +564,26 @@ function dump_class(class_name){
             var field = field_array[i]; //当前成员
             var field_name = field.getName();
             var field_class = field.getType().getName();
-            msgs.push("  field: " + clr_bright_cyan(field_name) + "\tclass: " + clr_purple(field_class));
+            let modifier = '' + Modifier.toString(field.getModifiers());
+            msgs.push("  "+ clr_cyan(modifier) + " " + clr_blue(field_class) + " " + clr_purple(field_name));
             fields.push({fieldName: field_name, fieldClass: field_class})
         }
         //hook 类所有方法 （所有重载方法也要hook)
         var methods = [];
-        for (var i = 0; i < mhd_array.length; i++) {
-            var mhd_cur = mhd_array[i]; //当前方法
-            var str_mhd_name = mhd_cur.getName(); //当前方法名
-            //当前方法重载方法的个数
-            var n_overload_cnt = cls[str_mhd_name].overloads.length;
-            msgs.push("  method: " + clr_yellow(str_mhd_name) + "()\toverload: " + clr_bright_blue(n_overload_cnt));
-            methods.push({methodName: str_mhd_name, overloadCount: n_overload_cnt})
+        for (var i = 0; i < method_array.length; i++) {
+            var cur_method = method_array[i]; //当前方法
+            var str_method_name = cur_method.getName(); //当前方法名
+            let modifier = '' + Modifier.toString(cur_method.getModifiers());
+            let str_ret_type = '' + cur_method.getReturnType();
+            str_ret_type = str_ret_type.replace(/(class|interface)/g, '')
+            let str_param_types = ('' + cur_method.getParameterTypes()).split(',');
+            let fmt_param_types = []
+            for (let j = 0; j < str_param_types.length; j++){
+                fmt_param_types.push(clr_bright_blue(str_param_types[j].replace(/(class|interface| )/g, '')))
+            }
+            msgs.push("  " + clr_cyan(modifier) + clr_yellow(str_ret_type) + " " + clr_bright_purple(str_method_name)
+                + clr_dark_gray("(") + fmt_param_types.join(clr_dark_gray(",")) + clr_dark_gray(")"));
+            methods.push({name: str_method_name, modifier: modifier, returnType: str_ret_type, parameterTypes: str_param_types.join(",")})
         }
         send(msgs.join("\n"));
         return {className: class_name, fields: fields, methods: methods}
