@@ -86,18 +86,6 @@ def get_pid_by_adb_shell(name, wait_time_in_sec=1):
     return pid
 
 
-def init_logger(log_file):
-    if log_file != '':
-        logger.setLevel(logging.INFO)
-        # create file handler which logs even debug messages
-        fh = logging.FileHandler(log_file, encoding='utf-8')
-        fh.setLevel(logging.INFO)
-        formatter = logging.Formatter("%(asctime)s  %(name)s  %(levelname)s  %(message)s")
-        fh.setFormatter(formatter)
-        # add the handlers to logger
-        logger.addHandler(fh)
-
-
 def write_log(text):
     if isinstance(text, str):
         for key in ansi_colors.keys():
@@ -111,16 +99,17 @@ def set_exit_handler(sig, func):
 
 def parse_request(data):
     param_infos = []
-    for key in ['method', 'url', 'headers', 'body']:
-        if key != 'headers':
-            if len(data[key]) > 0:
-                param = f'  {clr_bright_cyan(key)}: {data[key].strip()}'
+    for key in ['method', 'url', 'headers', 'body', 'class', 'request', 'probe']:
+        if key in data.keys():
+            if key != 'headers':
+                if len(data[key]) > 0:
+                    param = f'  {clr_bright_cyan(key)}: {data[key].strip()}'
+                else:
+                    continue
             else:
-                continue
-        else:
-            headers = data['headers'].strip().replace("\n", ", ")
-            param = f'  {clr_bright_cyan("headers")}: {headers}'
-        param_infos.append(param)
+                headers = data['headers'].strip().replace("\n", ", ")
+                param = f'  {clr_bright_cyan("headers")}: {headers}'
+            param_infos.append(param)
     return param_infos
 
 
@@ -136,6 +125,9 @@ def parse_response(data):
         param_infos.append(param)
     if 'body' in data.keys() and len(data['body']) > 0:
         param = f'  {clr_bright_cyan("body")}: {data["body"].strip()}'
+        param_infos.append(param)
+    if 'response' in data.keys() and len(data['response']) > 0:
+        param = f'  {clr_bright_cyan("response")}: {data["response"].strip()}'
         param_infos.append(param)
     return param_infos
 

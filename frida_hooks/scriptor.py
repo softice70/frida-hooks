@@ -70,6 +70,27 @@ class Scriptor:
              {"name": "offset", "type": "int"},
              {"name": "length", "type": "int"}
          ]},
+        {'api': 'searchClass', 'func': 'search_class', 'persistent': False, 'is_option': True,
+         'help': 'search the class that contains the specified keyword',
+         'params': [{"name": "keyword", "type": "string"}]},
+        {'api': 'searchFunc', 'func': 'search_func', 'persistent': False, 'is_option': True,
+         'help': 'search the specified method exactly',
+         'params': [
+             {"name": "func", "type": "string"},
+             {"name": "exclude", "type": "string", "isOptional": True}
+         ]},
+        {'api': 'fuzzySearchFunc', 'func': 'fuzzy_search_func', 'persistent': False, 'is_option': True,
+         'help': 'search the method that contains the specified keyword',
+         'params': [
+             {"name": "keyword", "type": "string"},
+             {"name": "exclude", "type": "string", "isOptional": True}
+         ]},
+        {'api': 'searchReturn', 'func': 'search_return', 'persistent': False, 'is_option': True,
+         'help': 'search the specified type of return value',
+         'params': [
+             {"name": "type", "type": "string"},
+             {"name": "exclude", "type": "string", "isOptional": True}
+         ]},
         {'api': 'searchInMemory', 'func': 'search_in_memory', 'persistent': False, 'is_option': False},
         {'api': 'memoryDump', 'func': 'memory_dump', 'persistent': False, 'is_option': False},
         {'api': 'scanDex', 'func': 'scan_dex', 'persistent': False, 'is_option': False},
@@ -108,6 +129,10 @@ class Scriptor:
     @staticmethod
     def set_show_detail(show_detail):
         Scriptor._show_detail = show_detail
+
+    @staticmethod
+    def get_show_detail():
+        return Scriptor._show_detail
 
     @staticmethod
     def reset_frida_cmds():
@@ -455,7 +480,7 @@ class Scriptor:
                 name = param_def['name']
                 type = param_def['type']
                 value = Scriptor._get_option(options, name, '')
-                if value != '':
+                if value != '' or ('isOptional' in param_def.keys() and param_def['isOptional']):
                     params[name] = value
                     params_in_key.append(f'--{name} {value}')
                     param_in_api = f'"{value}"' if type == "string" else value

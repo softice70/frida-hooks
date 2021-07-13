@@ -169,10 +169,10 @@ Licensed under the Apache License, Version 2.0
 
 ToDo
 -------
+- [ ] 增加类或方法的查找功能
 - [ ] 安装frida server，使用frida-push
 - [ ] 增加Intent，参考objection
 - [ ] 增加结果过滤功能
-- [ ] 增加类或方法的查找功能
 - [ ] 支持多设备选择
 - [ ] 优化颜色控制代码
 - [ ] write_log要改

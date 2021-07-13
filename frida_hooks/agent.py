@@ -36,6 +36,7 @@ class FridaAgent:
         self._host = "127.0.0.1"
         self._port = 8989
         self._httpd = None
+        self._fh_log = None
         pass
 
     @staticmethod
@@ -152,6 +153,134 @@ class FridaAgent:
             self._session.detach()
         print(clr_bright_gray(clr_reverse('frida hooker exited.')))
 
+    @staticmethod
+    def _init_parser(parser):
+        parser.remove_option('-h')
+        Scriptor.add_cmd_options(parser)
+        Scriptor.add_param_options(parser)
+
+        running_group = OptionGroup(parser, 'Running Options')
+        running_group.add_option("-S", "--spawn", action="store_true", dest="is_suspend", default=False,
+                                 help='spawn mode of Frida, that suspend app during startup')
+        running_group.add_option("-m", "--monochrome", action="store_true", dest="monochrome", default=False,
+                                 help='set to monochrome mode')
+        running_group.add_option("-h", "--host", action="store", type="string", dest="host", default="127.0.0.1",
+                                 help='the ip of http server, default: 127.0.0.1')
+        running_group.add_option("-p", "--port", action="store", type="int", dest="port", default=8989,
+                                 help='the port of http server, default: 8989')
+        running_group.add_option("", "--silence", action="store_true", dest="silence", default=False,
+                                 help='no message is output to screen')
+        running_group.add_option("-d", "--show_detail", action="store_true", dest="show_detail", default=False,
+                                 help='show and log the detail infomation')
+        running_group.add_option("-f", "--script_file", action="store", type="string", dest="file_script",
+                                 help='set the script file include on_message')
+        running_group.add_option("-c", "--config_file", action="store", type="string", dest="config",
+                                 help='load the options from the config file')
+        running_group.add_option("-o", "--log_file", action="store", type="string", dest="log_file", default='',
+                                 help='set log file')
+        parser.add_option_group(running_group)
+
+        svr_group = OptionGroup(parser, 'Frida server Options')
+        svr_group.add_option("", "--start_server", action="store_true", dest="start_server", default=False,
+                             help='start the frida server')
+        svr_group.add_option("", "--stop_server", action="store_true", dest="stop_server", default=False,
+                             help='stop the frida server')
+        svr_group.add_option("", "--status_server", action="store_true", dest="status_server", default=False,
+                             help='get the status of frida server')
+        parser.add_option_group(svr_group)
+
+    @staticmethod
+    def _print_internal_cmd_help():
+        help_strs = [
+            f'Usage: cmd [option]\ncmd:',
+            f'\n  {clr_yellow("h")}{clr_bright_cyan("elp")}\t\tshow this help message',
+            f'\n  {clr_yellow("o")}{clr_bright_cyan("ptions")}\tprint options',
+            f'\n  {clr_yellow("l")}{clr_bright_cyan("ist")}\t\tshow hook list',
+            f'\n  {clr_yellow("d")}{clr_bright_cyan("isable <key>")}\tset disable the hook item by key',
+            f'\n  {clr_yellow("e")}{clr_bright_cyan("nable <key>")}\tset enable the hook item by key',
+            f'\n  {clr_bright_cyan("re")}{clr_yellow("m")}{clr_bright_cyan("ove <key>")}\tremove the hook item by key',
+            f'\n  {clr_yellow("r")}{clr_bright_cyan("un [options]")}\trun hook option, see also <{clr_bright_cyan("options")}>',
+            f'\n       example: run --hook_class --class com.xxx.xxx.xxxxxx.Classxxx',
+            f'\n                run --hook_func --class com.xxx.xxx.xxxxxx.Classxxx --func Funcxxx',
+            f'\n                run --hook_so_func --module libxxx.so --func getSign',
+            f'\n                run --hook_so_func --module libxxx.so --addr 0xedxxxxxx',
+            f'\n  {clr_yellow("c")}{clr_bright_cyan("onfig <file>")}\tload the config file',
+            f'\n  {clr_bright_cyan("lo")}{clr_yellow("g")}{clr_bright_cyan(" [file]")}\tset the log file, and if file is not set, the log will be turned off',
+            f'\n  {clr_bright_cyan("re")}{clr_yellow("s")}{clr_bright_cyan("tart")}\trestart the hook session',
+            f'\n  {clr_bright_cyan("de")}{clr_yellow("t")}{clr_bright_cyan("ail")}\ttoggles whether to display details',
+            f'\n  {clr_bright_cyan("cls")}\t\tclear screen',
+            f'\n  {clr_yellow("q")}{clr_bright_cyan("uit")}\t\tquit'
+        ]
+        print("".join(help_strs))
+
+    @staticmethod
+    def __start_frida_server():
+        def kill_process():
+            try:
+                p.kill()
+            except OSError:
+                pass  # Swallow the error
+
+        print(f'{FridaAgent._frida_server_path} is starting...')
+        cmd = "adb shell su"
+        sub_cmd = FridaAgent._frida_server_path + " &\n"
+        p = subprocess.Popen(cmd, shell=True, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+        p.stdin.write(sub_cmd.encode())
+        timer = Timer(3, kill_process)
+        timer.start()
+        p.wait()
+        timer.cancel()
+
+    @staticmethod
+    def _parse_internal_cmd(cmd_str):
+        cmds_orig = re.split(' ', cmd_str)
+        cmd = []
+        for item in cmds_orig:
+            if len(item) > 0:
+                cmd.append(item)
+        return cmd
+
+    @staticmethod
+    def _print_hook_info(scripts_map):
+        _id = 0
+        for key in scripts_map.keys():
+            scripts_map[key]["id"] = _id
+            _id += 1
+            if scripts_map[key]['isEnable']:
+                print(f'{scripts_map[key]["id"]:>3}[{clr_bright_green("✓")}] {clr_yellow(key)}')
+            else:
+                print(f'{scripts_map[key]["id"]:>3}[{clr_bright_green("✗")}] {clr_dark_gray(key)}')
+
+    @staticmethod
+    def _so_fix(source, output, base):
+        if platform.system().lower() == 'windows':
+            fixer_file = os.path.join(dirname(abspath(__file__)), 'bin\\SoFixer-Windows-64.exe')
+            cmd = f'{fixer_file} -m {base} -s {source} -o {output}'
+            ret = exec_cmd(cmd, 20)
+            print_screen(ret, is_show_prompt=False)
+            return True
+        else:
+            return False
+
+    @staticmethod
+    def _dex_fix(dex_bytes):
+        import struct
+        dex_size = len(dex_bytes)
+
+        if dex_bytes[:4] != b"dex\n":
+            dex_bytes = b"dex\n035\x00" + dex_bytes[8:]
+
+        if dex_size >= 0x24:
+            dex_bytes = dex_bytes[:0x20] + struct.Struct("<I").pack(dex_size) + dex_bytes[0x24:]
+
+        if dex_size >= 0x28:
+            dex_bytes = dex_bytes[:0x24] + struct.Struct("<I").pack(0x70) + dex_bytes[0x28:]
+
+        if dex_size >= 0x2C and dex_bytes[0x28:0x2C] not in [b'\x78\x56\x34\x12', b'\x12\x34\x56\x78']:
+            dex_bytes = dex_bytes[:0x28] + b'\x78\x56\x34\x12' + dex_bytes[0x2C:]
+
+        return dex_bytes
+
     def _load_config(self, cfg_file):
         ret = False
         if os.path.exists(cfg_file):
@@ -167,7 +296,7 @@ class FridaAgent:
                 Scriptor.set_show_detail(
                     cf.get("main", "show_detail").lower() == 'true' if cf.has_option("main", "show_detail") else False)
                 Scriptor.reset_frida_cmds()
-                init_logger(log_file)
+                self._open_logger(log_file)
                 if not self._app_package or self._app_package == app_package:
                     self._app_package = app_package
                     Scriptor.set_app_package(self._app_package)
@@ -176,7 +305,7 @@ class FridaAgent:
                         script = Scriptor.prepare_script({'cf': cf, 'section': item}, self._imp_mods)
                         if script:
                             self._scripts_map[script['key']] = script
-                            ret = True
+                    ret = True
                     print(f'{clr_bright_purple(cfg_file)} is loaded...')
                 else:
                     print(clr_bright_red("warning: invalidate app_package:[") + clr_bright_cyan(app_package)
@@ -198,8 +327,25 @@ class FridaAgent:
         script = Scriptor.prepare_script(options, self._imp_mods)
         if script:
             self._scripts_map[script['key']] = script
-        init_logger(options.log_file)
+        self._open_logger(options.log_file)
         return self._scripts_map
+
+    def _open_logger(self, log_file):
+        if self._fh_log:
+            logger.removeHandler(self._fh_log)
+            self._fh_log = None
+        if log_file != '':
+            logger.setLevel(logging.INFO)
+            # create file handler which logs even debug messages
+            self._fh_log = logging.FileHandler(log_file, encoding='utf-8')
+            self._fh_log.setLevel(logging.INFO)
+            formatter = logging.Formatter("%(asctime)s  %(name)s  %(levelname)s  %(message)s")
+            self._fh_log.setFormatter(formatter)
+            # add the handlers to logger
+            logger.addHandler(self._fh_log)
+            print(f'log file: {clr_blue(abspath(self._fh_log.baseFilename))}')
+        else:
+            print(f'log is turned off.')
 
     def _start_http_server(self):
         HttpHandler.set_agent(self)
@@ -330,24 +476,6 @@ class FridaAgent:
             self._print_internal_cmd_help()
         return ret
 
-    @staticmethod
-    def __start_frida_server():
-        def kill_process():
-            try:
-                p.kill()
-            except OSError:
-                pass  # Swallow the error
-
-        print(f'{FridaAgent._frida_server_path} is starting...')
-        cmd = "adb shell su"
-        sub_cmd = FridaAgent._frida_server_path + " &\n"
-        p = subprocess.Popen(cmd, shell=True, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
-        p.stdin.write(sub_cmd.encode())
-        timer = Timer(3, kill_process)
-        timer.start()
-        p.wait()
-        timer.cancel()
-
     def _load_script(self, wait_time_in_sec=10):
         scripts_str, fun_on_msg = Scriptor.gen_script_str(self._scripts_map)
         self._script = None
@@ -379,28 +507,6 @@ class FridaAgent:
         for key in self._scripts_map.keys():
             self.exec_one_script(self._scripts_map[key])
 
-    @staticmethod
-    def _print_internal_cmd_help():
-        help_strs = [
-            f'Usage: cmd [option]\ncmd:',
-            f'\n  {clr_yellow("h")}{clr_bright_cyan("elp")}\t\tshow this help message',
-            f'\n  {clr_yellow("o")}{clr_bright_cyan("ptions")}\tprint options',
-            f'\n  {clr_yellow("l")}{clr_bright_cyan("ist")}\t\tshow hook list',
-            f'\n  {clr_yellow("c")}{clr_bright_cyan("onfig <file>")}\tload the config file',
-            f'\n  {clr_yellow("d")}{clr_bright_cyan("isable <key>")}\tset disable the hook item by key',
-            f'\n  {clr_yellow("e")}{clr_bright_cyan("nable <key>")}\tset enable the hook item by key',
-            f'\n  {clr_bright_cyan("re")}{clr_yellow("m")}{clr_bright_cyan("ove <key>")}\tremove the hook item by key',
-            f'\n  {clr_yellow("r")}{clr_bright_cyan("un [options]")}\trun hook option, see also <{clr_bright_cyan("options")}>',
-            f'\n       example: run --hook_class --class com.xxx.xxx.xxxxxx.Classxxx',
-            f'\n                run --hook_func --class com.xxx.xxx.xxxxxx.Classxxx --func Funcxxx',
-            f'\n                run --hook_so_func --module libxxx.so --func getSign',
-            f'\n                run --hook_so_func --module libxxx.so --addr 0xedxxxxxx',
-            f'\n  {clr_bright_cyan("re")}{clr_yellow("s")}{clr_bright_cyan("tart")}\trestart the hook session',
-            f'\n  {clr_bright_cyan("cls")}\t\tclear screen',
-            f'\n  {clr_yellow("q")}{clr_bright_cyan("uit")}\t\tquit'
-        ]
-        print("".join(help_strs))
-
     def _run_console(self):
         while self._keep_running:
             print_prompt()
@@ -417,6 +523,13 @@ class FridaAgent:
                 elif cmd[0] == 'config' or cmd[0] == 'c':
                     if self._exec_load_config(cmd):
                         break
+                elif cmd[0] == 'log' or cmd[0] == 'g':
+                    if len(cmd) == 2:
+                        self._open_logger(cmd[1])
+                    elif len(cmd) == 1:
+                        self._open_logger('')
+                    else:
+                        print(f'usage: {clr_bright_cyan("lo")}{clr_yellow("g")}{clr_bright_cyan(" <file>")}')
                 elif cmd[0] == 'disable' or cmd[0] == 'd':
                     if self._exec_cmd_disable_and_enable(cmd, False):
                         break
@@ -428,6 +541,9 @@ class FridaAgent:
                         break
                 elif cmd[0] == 'restart' or cmd[0] == 's':
                     break
+                elif cmd[0] == 'detail' or cmd[0] == 't':
+                    Scriptor.set_show_detail(not Scriptor.get_show_detail())
+                    print_screen(f"show detail: {clr_yellow(str(Scriptor.get_show_detail()))}")
                 elif cmd[0] == 'cls':
                     os.system('cls')
                 elif cmd[0] == 'run' or cmd[0] == 'r':
@@ -477,26 +593,6 @@ class FridaAgent:
         else:
             self._parser.print_help()
 
-    @staticmethod
-    def _parse_internal_cmd(cmd_str):
-        cmds_orig = re.split(' ', cmd_str)
-        cmd = []
-        for item in cmds_orig:
-            if len(item) > 0:
-                cmd.append(item)
-        return cmd
-
-    @staticmethod
-    def _print_hook_info(scripts_map):
-        _id = 0
-        for key in scripts_map.keys():
-            scripts_map[key]["id"] = _id
-            _id += 1
-            if scripts_map[key]['isEnable']:
-                print(f'{scripts_map[key]["id"]:>3}[{clr_bright_green("✓")}] {clr_yellow(key)}')
-            else:
-                print(f'{scripts_map[key]["id"]:>3}[{clr_bright_green("✗")}] {clr_dark_gray(key)}')
-
     def _get_process_id(self, app):
         pid = -1
         try:
@@ -529,17 +625,6 @@ class FridaAgent:
                 print(clr_bright_red(f"[Except] - {e}: {info}"))
             print_screen(clr_bright_green(f'{module_name} dump finished!'))
 
-    @staticmethod
-    def _so_fix(source, output, base):
-        if platform.system().lower() == 'windows':
-            fixer_file = os.path.join(dirname(abspath(__file__)), 'bin\\SoFixer-Windows-64.exe')
-            cmd = f'{fixer_file} -m {base} -s {source} -o {output}'
-            ret = exec_cmd(cmd, 20)
-            print_screen(ret, is_show_prompt=False)
-            return True
-        else:
-            return False
-
     def _dump_dex(self):
         if self._enable_deep_search_for_dump_dex:
             print(clr_yellow("[DEXDump]: deep search mode is enable, maybe wait long time."))
@@ -566,60 +651,6 @@ class FridaAgent:
                 print(clr_bright_red(f"[Except] - {e}: {info}"))
         print_screen(clr_bright_green('Dex dump finished!'))
 
-    @staticmethod
-    def _dex_fix(dex_bytes):
-        import struct
-        dex_size = len(dex_bytes)
-
-        if dex_bytes[:4] != b"dex\n":
-            dex_bytes = b"dex\n035\x00" + dex_bytes[8:]
-
-        if dex_size >= 0x24:
-            dex_bytes = dex_bytes[:0x20] + struct.Struct("<I").pack(dex_size) + dex_bytes[0x24:]
-
-        if dex_size >= 0x28:
-            dex_bytes = dex_bytes[:0x24] + struct.Struct("<I").pack(0x70) + dex_bytes[0x28:]
-
-        if dex_size >= 0x2C and dex_bytes[0x28:0x2C] not in [b'\x78\x56\x34\x12', b'\x12\x34\x56\x78']:
-            dex_bytes = dex_bytes[:0x28] + b'\x78\x56\x34\x12' + dex_bytes[0x2C:]
-
-        return dex_bytes
-
-    @staticmethod
-    def _init_parser(parser):
-        parser.remove_option('-h')
-        Scriptor.add_cmd_options(parser)
-        Scriptor.add_param_options(parser)
-
-        running_group = OptionGroup(parser, 'Running Options')
-        running_group.add_option("-S", "--spawn", action="store_true", dest="is_suspend", default=False,
-                                 help='spawn mode of Frida, that suspend app during startup')
-        running_group.add_option("-m", "--monochrome", action="store_true", dest="monochrome", default=False,
-                                 help='set to monochrome mode')
-        running_group.add_option("-h", "--host", action="store", type="string", dest="host", default="127.0.0.1",
-                                 help='the ip of http server, default: 127.0.0.1')
-        running_group.add_option("-p", "--port", action="store", type="int", dest="port", default=8989,
-                                 help='the port of http server, default: 8989')
-        running_group.add_option("", "--silence", action="store_true", dest="silence", default=False,
-                                 help='no message is output to screen')
-        running_group.add_option("-d", "--show_detail", action="store_true", dest="show_detail", default=False,
-                                 help='show and log the detail infomation')
-        running_group.add_option("-f", "--script_file", action="store", type="string", dest="file_script",
-                                 help='set the script file include on_message')
-        running_group.add_option("-c", "--config_file", action="store", type="string", dest="config",
-                                 help='load the options from the config file')
-        running_group.add_option("-o", "--log_file", action="store", type="string", dest="log_file", default='',
-                                 help='set log file')
-        parser.add_option_group(running_group)
-
-        svr_group = OptionGroup(parser, 'Frida server Options')
-        svr_group.add_option("", "--start_server", action="store_true", dest="start_server", default=False,
-                             help='start the frida server')
-        svr_group.add_option("", "--stop_server", action="store_true", dest="stop_server", default=False,
-                             help='stop the frida server')
-        svr_group.add_option("", "--status_server", action="store_true", dest="status_server", default=False,
-                             help='get the status of frida server')
-        parser.add_option_group(svr_group)
 
 
 

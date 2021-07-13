@@ -36,6 +36,14 @@ const clr_overline = (text) => clr_ansify("\x1B[53m", text);
 // return an ansified string
 const clr_ansify = (color, ...msg) => _is_color_mode? color + msg.join(``) + "\x1B[0m": msg.join(``);
 
+const not_safe_classes = {
+    "androidx.appcompat.widget.AppCompatTextClassifierHelper": true,
+    "androidx.core.text.PrecomputedTextCompat$Params": true,
+    "androidx.core.text.PrecomputedTextCompat": true,
+    "android.support.v4.text.c$a": true,
+    "android.support.v4.text.c": true,
+}
+
 function set_color_mode(is_color_mode){
     _is_color_mode = is_color_mode
 }
@@ -58,6 +66,29 @@ function send_msg(data){
     }
 }
 
+function java_use_safe(class_name){
+    let cls = null;
+    try{
+        if(!not_safe_classes[class_name]){
+            return Java.use(class_name);
+        }
+    }catch(e){
+    }
+    return cls;
+}
+
+function get_methods_safe(class_name){
+    let methods = [];
+    try{
+        if(!not_safe_classes[class_name]){
+            let cls = Java.use(class_name);
+            methods = cls.class.getDeclaredMethods();
+        }
+    }catch(e){
+    }
+    return methods;
+}
+
 function get_application_context() {
   const ActivityThread = Java.use("android.app.ActivityThread");
   return ActivityThread.currentApplication().getApplicationContext();
@@ -67,6 +98,15 @@ function R(name, type){
   const context = get_application_context();
   // https://github.com/bitpay/android-sdk/issues/14#issue-202495610
   return context.getResources().getIdentifier(name, type, context.getPackageName());
+}
+
+function trim(str, is_global){
+    var result;
+    result = str.replace(/(^\s+)|(\s+$)/g,"");
+    if(is_global){
+        result = result.replace(/\s/g,"");
+    }
+    return result;
 }
 
 //获取字段信息
@@ -155,7 +195,7 @@ function get_stack_trace(){
     return Java.use("java.lang.Thread").currentThread().getStackTrace().toString();
 }
 
-function list_class(){
+function list_class_core(){
     return wrap_java_perform(() => {
         var classes = []
         Java.enumerateLoadedClasses({
@@ -164,9 +204,15 @@ function list_class(){
              },
             "onComplete": function () { }
         });
-       send_msg(classes);
        return classes;
     });
+}
+
+function list_class(){
+    list_class_core().then(classes => {
+       send_msg(classes);
+       return classes;
+    })
 }
 
 function list_class_loaders(){
@@ -295,71 +341,97 @@ function list_broadcast_receivers() {
 }
 
 function gen_request_data(request, timestamp, from){
-    var ByteString = Java.use("okio.ByteString");
-    var Buffer = Java.use("okio.Buffer");
-    let data = null;
-    try{
-        if(!timestamp){
-            timestamp = (new Date()).getTime();
-        }
-        var url = request.url().toString();
-        var method = request.method();
-        var headers = request.headers().toString();
-        var body = '';
-        var requestBody = request.body();
-        var contentLength = requestBody ? requestBody.contentLength() : 0;
-        if (contentLength > 0) {
-            var BufferObj = Buffer.$new();
-            requestBody.writeTo(BufferObj);
-            try {
-                body = ByteString.of(BufferObj.readByteArray().utf8());
-            } catch (error) {
-                try {
-                    body = ByteString.of(BufferObj.readByteArray()).hex();
-                } catch (error) {
-                    console.log("error 1:", error);
-                }
-            }
-        }
-        data = {type:"request",url:url,method:method,headers:headers,body:body,timestamp:timestamp,from:from};
-    } catch (error) {
-        console.log("error 2:", error);
-    }
-    return data;
-}
-
-function gen_response_data(response, timestamp, from){
-    let data = null;
+    var cls = null;
+    var request_class = null;
     try {
-        if(!timestamp){
-            timestamp = (new Date()).getTime();
-        }
-        var responseBody = response.body();
-        var contentLength = responseBody ? responseBody.contentLength() : 0;
-        var body = '';
-        if (contentLength > 0) {
-            var ContentType = response.headers().get("Content-Type");
-            if (ContentType.indexOf("video") == -1 && ContentType.indexOf("application/zip") != 0 && ContentType.indexOf("application") == 0) {
-                var source = responseBody.source();
+        cls = request.getClass();
+        request_class = Java.use("okhttp3.Request");
+    } catch (e) {
+    }
+    if (cls !== null && request_class != null && cls.equals(request_class.class)) {
+        var ByteString = Java.use("okio.ByteString");
+        var Buffer = Java.use("okio.Buffer");
+        let data = null;
+        try{
+            if(!timestamp){
+                timestamp = (new Date()).getTime();
+            }
+            var url = request.url().toString();
+            var method = request.method();
+            var headers = request.headers().toString();
+            var body = '';
+            var requestBody = request.body();
+            var contentLength = requestBody ? requestBody.contentLength() : 0;
+            if (contentLength > 0) {
+                var BufferObj = Buffer.$new();
+                requestBody.writeTo(BufferObj);
                 try {
-                    body = source.readUtf8();
+                    body = ByteString.of(BufferObj.readByteArray().utf8());
                 } catch (error) {
                     try {
-                        body = source.readByteString().hex();
+                        body = ByteString.of(BufferObj.readByteArray()).hex();
                     } catch (error) {
-                        console.log("error 4:", error);
+                        console.log("error 1:", error);
                     }
                 }
             }
+            data = {type: "request", request: (request != null? request.toString(): "null"), url: url,
+                    method: method, headers: headers, body: body, timestamp: timestamp, from: from};
+        } catch (error) {
+            console.log("error 2:", error);
         }
-        data = {type:"response", response:response.toString(), headers:response.headers().toString(), body:body, timestamp:timestamp, from:from};
-    } catch (error) {
-        console.log("error 3:", error);
+        return data;
+    }else{
+        let class_name = trim(cls.toString().replace(/(class|interface)/g, ''));
+        let ret_values = probe_request_values(request, cls)
+        return {type: "request", request: (request != null? request.toString(): "null"),
+                probe: JSON.stringify(ret_values), class: class_name, timestamp:timestamp, from: from};
     }
-    return data;
 }
 
-function hook_func(class_name, method_name){
+function gen_response_data(response, timestamp, from){
+    var cls = null;
+    var response_class = null;
+    try {
+        response_class = Java.use("okhttp3.Response");
+        cls = response.getClass();
+    } catch (e) {
+    }
+    if (cls !== null && response_class != null && cls.equals(response_class.class)) {
+        let data = null;
+        try {
+            if(!timestamp){
+                timestamp = (new Date()).getTime();
+            }
+            var responseBody = response.body();
+            var contentLength = responseBody ? responseBody.contentLength() : 0;
+            var body = '';
+            if (contentLength > 0) {
+                var ContentType = response.headers().get("Content-Type");
+                if (ContentType.indexOf("video") == -1 && ContentType.indexOf("application/zip") != 0 && ContentType.indexOf("application") == 0) {
+                    var source = responseBody.source();
+                    try {
+                        body = source.readUtf8();
+                    } catch (error) {
+                        try {
+                            body = source.readByteString().hex();
+                        } catch (error) {
+                            console.log("error 4:", error);
+                        }
+                    }
+                }
+            }
+            data = {type:"response", response:response.toString(), headers:response.headers().toString(), body:body, timestamp:timestamp, from:from};
+        } catch (error) {
+            console.log("error 3:", error);
+        }
+        return data;
+    }else{
+        return {type:"response",response:(response!=null?response.toString():"null"),timestamp:timestamp,from:from};
+    }
+}
+
+function hook_func_frame(class_name, method_name, func){
     return wrap_java_perform(() => {
         var cls = Java.use(class_name);
         var field_array = cls.class.getFields();
@@ -369,27 +441,32 @@ function hook_func(class_name, method_name){
         }else{
             var n_overload_cnt = cls[method_name].overloads.length;
             for (var index = 0; index < n_overload_cnt; index++) {
-                cls[method_name].overloads[index].implementation = function () {
-                    // 获取时间戳
-                    var timestamp = (new Date()).getTime();
-                    var datas = [];
-                    datas.push({type:"stack", data:get_stack_trace(), timestamp:timestamp, hookName:"hook_func", funcName:full_func_name});
-                    let args_before = get_arguments(arguments, arguments.length);
-                    let fields_before = get_fields_ex(this);
-                    //调用原应用的方法
-                    let ret = this[method_name].apply(this, arguments);
-                    let args_after = get_arguments(arguments, arguments.length);
-                    let fields_after = get_fields_ex(this,);
-                    let ret_fields = get_fields_ex(ret);
-                    datas.push({type:"arguments", before:JSON.stringify(args_before), after:JSON.stringify(args_after), timestamp:timestamp, hookName:"hook_func", funcName:full_func_name});
-                    datas.push({type:"fields", before:JSON.stringify(fields_before), after:JSON.stringify(fields_after), timestamp:timestamp, hookName:"hook_func", funcName:full_func_name});
-                    datas.push({type:"return", value:(ret!=null?ret.toString():"null"), fields:JSON.stringify(ret_fields), timestamp:timestamp, hookName:"hook_func", funcName:full_func_name});
-                    send(datas);
-                    return ret;
-                }
+                cls[method_name].overloads[index].implementation = func;
                 console.log(clr_yellow(clr_blink(  cls + "." + full_func_name + "() [" + index +  "] is hooked...")));
             }
         }
+    });
+}
+
+function hook_func(class_name, method_name){
+    return hook_func_frame(class_name, method_name, function () {
+        var full_func_name = class_name + '.' + method_name;
+        // 获取时间戳
+        var timestamp = (new Date()).getTime();
+        var datas = [];
+        datas.push({type:"stack", data:get_stack_trace(), timestamp:timestamp, hookName:"hook_func", funcName:full_func_name});
+        let args_before = get_arguments(arguments, arguments.length);
+        let fields_before = get_fields_ex(this);
+        //调用原应用的方法
+        let ret = this[method_name].apply(this, arguments);
+        let args_after = get_arguments(arguments, arguments.length);
+        let fields_after = get_fields_ex(this,);
+        let ret_fields = get_fields_ex(ret);
+        datas.push({type:"arguments", before:JSON.stringify(args_before), after:JSON.stringify(args_after), timestamp:timestamp, hookName:"hook_func", funcName:full_func_name});
+        datas.push({type:"fields", before:JSON.stringify(fields_before), after:JSON.stringify(fields_after), timestamp:timestamp, hookName:"hook_func", funcName:full_func_name});
+        datas.push({type:"return", value:(ret!=null?ret.toString():"null"), fields:JSON.stringify(ret_fields), timestamp:timestamp, hookName:"hook_func", funcName:full_func_name});
+        send(datas);
+        return ret;
     });
 }
 
@@ -398,40 +475,18 @@ function hook_class(class_name){
         //获取类的所有方法
         var cls = Java.use(class_name);
         var field_array = cls.class.getFields();
-        var method_array = cls.class.getDeclaredMethods();
+        var method_array = get_methods_safe(class_name);
 
         //hook 类所有方法 （所有重载方法也要hook)
-        let hooked_methods = [];
+        let hooked_methods = {};
         for (var i = 0; i < method_array.length; i++){
             let cur_method = method_array[i]; //当前方法
             let str_method_name = cur_method.getName(); //当前方法名
-
-            //当前方法重载方法的个数
-            let n_overload_cnt = cls[str_method_name].overloads.length;
-            for (var index = 0; index < n_overload_cnt; index++){
-                cls[str_method_name].overloads[index].implementation = function (){
-                    var full_func_name = class_name + '.' + str_method_name;
-                    // 获取时间戳
-                    var timestamp = (new Date()).getTime();
-                    var datas = [];
-                    datas.push({type:"stack", data:get_stack_trace(), timestamp:timestamp, hookName:"hook_class", funcName:full_func_name});
-                    let args_before = get_arguments(arguments, arguments.length);
-                    let fields_before = get_fields_ex(this);
-                    //调用原应用的方法
-                    let ret = this[str_method_name].apply(this, arguments);
-                    let args_after = get_arguments(arguments, arguments.length);
-                    let fields_after = get_fields_ex(this);
-                    let ret_fields = get_fields_ex(ret);
-                    datas.push({type:"arguments", before:JSON.stringify(args_before), after:JSON.stringify(args_after), timestamp:timestamp, hookName:"hook_class", funcName:full_func_name});
-                    datas.push({type:"fields", before:JSON.stringify(fields_before), after:JSON.stringify(fields_after), timestamp:timestamp, hookName:"hook_class", funcName:full_func_name});
-                    datas.push({type:"return", value:(ret!=null?ret.toString():"null"), fields:JSON.stringify(ret_fields), timestamp:timestamp, hookName:"hook_class", funcName:full_func_name});
-                    send(datas);
-                    return ret;
-                }
-                hooked_methods.push("  " + clr_yellow(str_method_name) + (n_overload_cnt > 0?"[" + index + "] \t" : ' \t'));
+            if (!hooked_methods[str_method_name]){
+                hook_func(class_name, str_method_name);
+                hooked_methods[str_method_name] = true;
             }
         }
-        console.log("methods:\n" + hooked_methods.join("\n") + "\n" + clr_yellow(clr_blink(cls + " is hooked...")));
     });
 }
 
@@ -488,9 +543,7 @@ function hook_so(module_name){
 }
 
 function hook_okhttp3_execute(){
-    return wrap_java_perform(() => {
-        var RealCallClass = Java.use('okhttp3.RealCall');
-        RealCallClass.execute.implementation = function(){
+    return hook_func_frame('okhttp3.RealCall', 'execute', function(){
             let datas = [];
             var timestamp = (new Date()).getTime();
             datas.push({type:"stack", data:get_stack_trace(), timestamp:timestamp});
@@ -500,9 +553,7 @@ function hook_okhttp3_execute(){
             datas.push(gen_response_data(response, timestamp, 'Execute'));
             send_msg(datas)
             return response;
-        }
-        console.log(clr_yellow(clr_blink("okhttp3.RealCall.execute() is hooked...")));
-    });
+        });
 }
 
 function hook_okhttp3_CallServer(){
@@ -554,7 +605,7 @@ function dump_class(class_name){
         //获取类的所有方法
         var cls = Java.use(class_name);
         var Modifier = Java.use("java.lang.reflect.Modifier");
-        var method_array = cls.class.getDeclaredMethods();
+        var method_array = get_methods_safe(class_name);
         var msgs = [];
         msgs.push(clr_bright_green("------------  " + class_name + "  ------------"));
         //获取类的所有字段
@@ -574,7 +625,7 @@ function dump_class(class_name){
             var cur_method = method_array[i]; //当前方法
             var str_method_name = cur_method.getName(); //当前方法名
             let modifier = '' + Modifier.toString(cur_method.getModifiers());
-            let str_ret_type = '' + cur_method.getReturnType();
+            let str_ret_type = ' ' + cur_method.getReturnType();
             str_ret_type = str_ret_type.replace(/(class|interface)/g, '')
             let str_param_types = ('' + cur_method.getParameterTypes()).split(',');
             let fmt_param_types = []
@@ -892,5 +943,163 @@ function hook_RegisterNatives() {
             });
         }
     });
+}
+function search_class(keyword){
+    let pattern = new RegExp(keyword, 'i');
+    return wrap_java_perform(() => {
+        list_class_core().then(class_names => {
+            var msgs = [];
+            var clazz = [];
+            class_names.forEach((class_name) =>{
+                if(class_name.match(pattern)){
+                    msgs.push(clr_purple(class_name));
+                    clazz.push(class_name)
+                }
+            })
+            send(msgs.join("\n"));
+            return {classes: clazz}
+        }).catch(function(error){
+        })
+    });
+}
+
+function search_func_core(method_name, exclude, is_exact){
+    let pattern = new RegExp(method_name, 'i');
+    let Modifier = Java.use("java.lang.reflect.Modifier");
+    let exclude_classes = {}
+    let exclude_class_array = exclude.split(',');
+    exclude_class_array.forEach(item => {
+        exclude_classes[item] = true;
+    })
+    return wrap_java_perform(() => {
+        list_class_core().then(class_names => {
+            var msgs = [];
+            var methods = [];
+            for (let m = 0; m < class_names.length; m++) {
+                let class_name = class_names[m];
+                try{
+                    console.log(clr_cyan((m + 1) + '/' + class_names.length), clr_purple(class_name));
+                    if(exclude_classes[class_name]){
+                        continue;
+                    }
+                    let cls = java_use_safe(class_name);
+                    if(is_exact && (!cls || !cls[method_name] || !cls[method_name].overloads
+                            || cls[method_name].overloads.length == 0)){
+                        continue;
+                    }
+                    let method_array = get_methods_safe(class_name);
+                    for (let i = 0; i < method_array.length; i++) {
+                        let cur_method = method_array[i]; //当前方法
+                        let str_method_name = cur_method.getName(); //当前方法名
+                        if((is_exact && str_method_name == method_name)
+                                || (!is_exact && str_method_name.match(pattern))){
+                            let modifier = '' + Modifier.toString(cur_method.getModifiers());
+                            let str_ret_type = ' ' + cur_method.getReturnType();
+                            str_ret_type = str_ret_type.replace(/(class|interface)/g, '')
+                            let str_param_types = ('' + cur_method.getParameterTypes()).split(',');
+                            let fmt_param_types = []
+                            for (let j = 0; j < str_param_types.length; j++){
+                                fmt_param_types.push(clr_bright_blue(str_param_types[j].replace(/(class|interface| )/g, '')))
+                            }
+                            msgs.push(clr_purple(class_name) + "\t" + clr_cyan(modifier) + clr_yellow(str_ret_type) + " " + clr_bright_purple(str_method_name)
+                                + clr_dark_gray("(") + fmt_param_types.join(clr_dark_gray(",")) + clr_dark_gray(")"));
+                            methods.push({className: class_name, name: str_method_name, modifier: modifier, returnType: str_ret_type, parameterTypes: str_param_types.join(",")})
+                        }
+                    }
+                } catch (e) {
+//                    console.log(class_name, e);
+                }
+            }
+            console.log(clr_green("-------------------------- search result -------------------------"));
+            send(msgs.join('\n'));
+            return {keyword: keyword, methods: methods}
+        }).catch(function(error){
+        })
+    });
+}
+
+function search_func(method_name, exclude){
+    return search_func_core(method_name, exclude, true);
+}
+
+function fuzzy_search_func(keyword, exclude){
+    return search_func_core(keyword, exclude, false);
+}
+
+function search_return_core(ret_class, exclude, is_exact){
+    let pattern = new RegExp(ret_class, 'i');
+    let Modifier = Java.use("java.lang.reflect.Modifier");
+    let exclude_classes = {}
+    let exclude_class_array = exclude.split(',');
+    exclude_class_array.forEach(item => {
+        exclude_classes[item] = true;
+    })
+    return wrap_java_perform(() => {
+        list_class_core().then(class_names => {
+            var msgs = [];
+            var methods = [];
+            for (let m = 0; m < class_names.length; m++) {
+                let class_name = class_names[m];
+                try{
+                    console.log(clr_cyan((m + 1) + '/' + class_names.length), clr_purple(class_name));
+                    if(exclude_classes[class_name]){
+                        continue;
+                    }
+                    let method_array = get_methods_safe(class_name);
+                    for (let i = 0; i < method_array.length; i++) {
+                        let cur_method = method_array[i]; //当前方法
+                        let str_method_name = cur_method.getName(); //当前方法名
+                        let str_ret_type = ' ' + cur_method.getReturnType();
+                        str_ret_type = str_ret_type.replace(/(class|interface)/g, '')
+                        if((is_exact && trim(str_ret_type, true) == ret_class)
+                                || (!is_exact && str_ret_type.match(pattern))){
+                            let modifier = '' + Modifier.toString(cur_method.getModifiers());
+                            let str_param_types = ('' + cur_method.getParameterTypes()).split(',');
+                            let fmt_param_types = []
+                            for (let j = 0; j < str_param_types.length; j++){
+                                fmt_param_types.push(clr_bright_blue(str_param_types[j].replace(/(class|interface| )/g, '')))
+                            }
+                            msgs.push(clr_purple(class_name) + "\t" + clr_cyan(modifier) + clr_yellow(str_ret_type) + " " + clr_bright_purple(str_method_name)
+                                + clr_dark_gray("(") + fmt_param_types.join(clr_dark_gray(",")) + clr_dark_gray(")"));
+                            methods.push({className: class_name, name: str_method_name, modifier: modifier, returnType: str_ret_type, parameterTypes: str_param_types.join(",")})
+                        }
+                    }
+                } catch (e) {
+//                    console.log(class_name, e);
+                }
+            }
+            console.log(clr_green("-------------------------- search result -------------------------"));
+            send(msgs.join('\n'));
+            return {returnType: ret_class, methods: methods}
+        }).catch(function(error){
+        })
+    });
+}
+
+function search_return(ret_class, exclude){
+    return search_return_core(ret_class, exclude, false);
+}
+
+function probe_request_values(request, cls){
+    let class_name = trim(cls.toString().replace(/(class|interface)/g, ''));
+    let method_array = get_methods_safe(class_name);
+    let ret_values = [];
+    for (let i = 0; i < method_array.length; i++) {
+        let cur_method = method_array[i]; //当前方法
+        let str_method_name = cur_method.getName(); //当前方法名
+        let str_ret_type = '' + cur_method.getReturnType();
+        str_ret_type = trim(str_ret_type.replace(/(class|interface)/g, ''));
+        let str_param_types = trim('' + cur_method.getParameterTypes());
+        if(str_param_types == '' && str_ret_type != 'java.lang.Object'
+                && str_ret_type != 'boolean' && str_ret_type.indexOf('$') < 0
+                && str_method_name != 'toString'){
+            try{
+                let ret = '' + eval('request.' + str_method_name + '()');
+                ret_values.push({method: str_method_name, ret: ret});
+            } catch (e) {
+            }
+        }
+    }
+    return ret_values;
 }
 
