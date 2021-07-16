@@ -119,16 +119,17 @@ def parse_response(data):
     while len(response) > 0:
         param, response = __get_param_from_request(response)
         param_infos.append(param)
-    if 'headers' in data.keys():
-        headers = data['headers'].strip().replace("\n", ", ")
-        param = f'  {clr_bright_cyan("headers")}: {headers}'
-        param_infos.append(param)
-    if 'body' in data.keys() and len(data['body']) > 0:
-        param = f'  {clr_bright_cyan("body")}: {data["body"].strip()}'
-        param_infos.append(param)
-    if 'response' in data.keys() and len(data['response']) > 0:
-        param = f'  {clr_bright_cyan("response")}: {data["response"].strip()}'
-        param_infos.append(param)
+    for key in ['headers', 'body', 'class', 'response']:
+        if key in data.keys():
+            if key != 'headers':
+                if len(data[key]) > 0:
+                    param = f'  {clr_bright_cyan(key)}: {data[key].strip()}'
+                else:
+                    continue
+            else:
+                headers = data['headers'].strip().replace("\n", ", ")
+                param = f'  {clr_bright_cyan("headers")}: {headers}'
+            param_infos.append(param)
     return param_infos
 
 

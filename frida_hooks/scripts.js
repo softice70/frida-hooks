@@ -42,6 +42,9 @@ const not_safe_classes = {
     "androidx.core.text.PrecomputedTextCompat": true,
     "android.support.v4.text.c$a": true,
     "android.support.v4.text.c": true,
+    "android.support.v4.text.PrecomputedTextCompat$Params": true,
+    "android.support.v4.text.PrecomputedTextCompat": true,
+    "com.taobao.taopai.business.ShareMainNewActivity": true,
 }
 
 function set_color_mode(is_color_mode){
@@ -129,6 +132,14 @@ function get_fields(_this, field_array){
     return fields;
 }
 
+function get_object_class(_this){
+    try {
+        return _this.getClass().getName();
+    } catch (e) {
+    }
+    return ''
+}
+
 //获取字段信息
 function get_fields_ex(_this){
     let fields = {};
@@ -175,7 +186,7 @@ function get_arguments(arg_list, arg_cnt){
             fields = get_fields_ex(arg_list[idx_arg]);
         } catch (e) {
         }
-        args[idx_arg] = {class: class_name, value: '' + arg_list[idx_arg], fields: fields};
+        args["arg" + idx_arg] = {class: class_name, value: '' + arg_list[idx_arg], fields: fields};
     }
     return args;
 }
@@ -185,7 +196,7 @@ function get_arguments_for_so(arg_list, arg_cnt){
     let args = {};
     //获取参数
     for (var idx_arg = 0; idx_arg < arg_cnt; idx_arg++) {
-        args[idx_arg] = '' + arg_list[idx_arg];
+        args["arg" + idx_arg] = '' + arg_list[idx_arg];
     }
     return args;
 }
@@ -340,7 +351,7 @@ function list_broadcast_receivers() {
    });
 }
 
-function gen_request_data(request, timestamp, from){
+function gen_request_data(request){
     var cls = null;
     var request_class = null;
     try {
@@ -353,9 +364,6 @@ function gen_request_data(request, timestamp, from){
         var Buffer = Java.use("okio.Buffer");
         let data = null;
         try{
-            if(!timestamp){
-                timestamp = (new Date()).getTime();
-            }
             var url = request.url().toString();
             var method = request.method();
             var headers = request.headers().toString();
@@ -376,7 +384,7 @@ function gen_request_data(request, timestamp, from){
                 }
             }
             data = {type: "request", request: (request != null? request.toString(): "null"), url: url,
-                    method: method, headers: headers, body: body, timestamp: timestamp, from: from};
+                    method: method, headers: headers, body: body};
         } catch (error) {
             console.log("error 2:", error);
         }
@@ -385,24 +393,21 @@ function gen_request_data(request, timestamp, from){
         let class_name = trim(cls.toString().replace(/(class|interface)/g, ''));
         let ret_values = probe_request_values(request, cls)
         return {type: "request", request: (request != null? request.toString(): "null"),
-                probe: JSON.stringify(ret_values), class: class_name, timestamp:timestamp, from: from};
+                probe: JSON.stringify(ret_values), class: class_name};
     }
 }
 
-function gen_response_data(response, timestamp, from){
+function gen_response_data(response){
     var cls = null;
     var response_class = null;
     try {
-        response_class = Java.use("okhttp3.Response");
         cls = response.getClass();
+        response_class = Java.use("okhttp3.Response");
     } catch (e) {
     }
     if (cls !== null && response_class != null && cls.equals(response_class.class)) {
         let data = null;
         try {
-            if(!timestamp){
-                timestamp = (new Date()).getTime();
-            }
             var responseBody = response.body();
             var contentLength = responseBody ? responseBody.contentLength() : 0;
             var body = '';
@@ -421,20 +426,21 @@ function gen_response_data(response, timestamp, from){
                     }
                 }
             }
-            data = {type:"response", response:response.toString(), headers:response.headers().toString(), body:body, timestamp:timestamp, from:from};
+            data = {type:"response", response:response.toString(), headers:response.headers().toString(), body:body};
         } catch (error) {
             console.log("error 3:", error);
         }
         return data;
     }else{
-        return {type:"response",response:(response!=null?response.toString():"null"),timestamp:timestamp,from:from};
+        let class_name = trim(cls.toString().replace(/(class|interface)/g, ''));
+        return {type:"response",response:(response!=null?response.toString():"null"),
+                class: class_name};
     }
 }
 
 function hook_func_frame(class_name, method_name, func){
     return wrap_java_perform(() => {
         var cls = Java.use(class_name);
-        var field_array = cls.class.getFields();
         var full_func_name = class_name + '.' + method_name;
         if(cls[method_name] == undefined){
             console.log('error: ' + full_func_name + ' not found in ' + cls + '!')
@@ -450,21 +456,23 @@ function hook_func_frame(class_name, method_name, func){
 
 function hook_func(class_name, method_name){
     return hook_func_frame(class_name, method_name, function () {
-        var full_func_name = class_name + '.' + method_name;
+        // console.log(clr_red(clr_blink('enter: ' + class_name + '.' + method_name)));
+        var full_func_name = class_name + '.' + method_name + '()';
         // 获取时间戳
         var timestamp = (new Date()).getTime();
         var datas = [];
-        datas.push({type:"stack", data:get_stack_trace(), timestamp:timestamp, hookName:"hook_func", funcName:full_func_name});
+        datas.push({type:"stack", data:get_stack_trace(), timestamp:timestamp, funcName:full_func_name});
         let args_before = get_arguments(arguments, arguments.length);
         let fields_before = get_fields_ex(this);
         //调用原应用的方法
         let ret = this[method_name].apply(this, arguments);
         let args_after = get_arguments(arguments, arguments.length);
-        let fields_after = get_fields_ex(this,);
+        let fields_after = get_fields_ex(this);
         let ret_fields = get_fields_ex(ret);
-        datas.push({type:"arguments", before:JSON.stringify(args_before), after:JSON.stringify(args_after), timestamp:timestamp, hookName:"hook_func", funcName:full_func_name});
-        datas.push({type:"fields", before:JSON.stringify(fields_before), after:JSON.stringify(fields_after), timestamp:timestamp, hookName:"hook_func", funcName:full_func_name});
-        datas.push({type:"return", value:(ret!=null?ret.toString():"null"), fields:JSON.stringify(ret_fields), timestamp:timestamp, hookName:"hook_func", funcName:full_func_name});
+        let ret_class = get_object_class(ret);
+        datas.push({type:"arguments", before:JSON.stringify(args_before), after:JSON.stringify(args_after)});
+        datas.push({type:"fields", before:JSON.stringify(fields_before), after:JSON.stringify(fields_after)});
+        datas.push({type:"return", class:ret_class, value:(ret!=null?ret.toString():"null"), fields:JSON.stringify(ret_fields)});
         send(datas);
         return ret;
     });
@@ -472,9 +480,9 @@ function hook_func(class_name, method_name){
 
 function hook_class(class_name){
     return wrap_java_perform(() => {
+        // hook 构造函数
+        hook_func(class_name, "$init");
         //获取类的所有方法
-        var cls = Java.use(class_name);
-        var field_array = cls.class.getFields();
         var method_array = get_methods_safe(class_name);
 
         //hook 类所有方法 （所有重载方法也要hook)
@@ -496,18 +504,19 @@ function hook_so_func(module_name, func_name, addr_str){
         var ptr_func = func_name != ''?
                         Module.findExportByName(module_name, func_name):
                         new NativePointer(addr_str);
-        console.log(clr_yellow(module_name +": " + '[' + ptr_func + '] ' + func_name + " is hooked..."));
+        var full_func_name = module_name + ": " + '[' + ptr_func + '] ' + func_name + '()';
+        console.log(clr_yellow(full_func_name + " is hooked..."));
         Interceptor.attach(ptr_func,{
             //onEnter: 进入该函数前要执行的代码，其中args是传入的参数，一般so层函数第一个参数都是JniEnv，第二个参数是jclass，从第三个参数开始是我们java层传入的参数
             onEnter: function(args) {
                 var datas = [];
-                datas.push({type:"stack", data:get_stack_trace(), hookName:"hook_so_func", funcName:func_name});
+                datas.push({type:"stack", data:get_stack_trace(), funcName:full_func_name});
                 let args_list = get_arguments_for_so(args, 4);
-                datas.push({type:"asm_args", data:args_list, hookName:"hook_so_func", funcName:func_name});
+                datas.push({type:"asm_args", data:args_list});
                 send(datas);
             },
             onLeave: function(ret){ //onLeave: 该函数执行结束要执行的代码，其中ret参数即是返回值
-                send({type:"return", value:(ret!=null?ret.toString():"null"), hookName:"hook_so_func", funcName:func_name});
+                send({type:"return", value:(ret!=null?ret.toString():"null"), funcName:func_name});
             }
         });
     });
@@ -519,22 +528,22 @@ function hook_so(module_name){
         var exports = libxx.enumerateExports();
         for(var i = 0; i < exports.length; i++) {
             let ptr_func = new NativePointer(exports[i].address);
-            let func_name = exports[i].name;
+            let func_name = module_name + ": " + '[' + ptr_func + '] ' + exports[i].name + '()';
             try {
                 Interceptor.attach(ptr_func,{
                     //onEnter: 进入该函数前要执行的代码，其中args是传入的参数，一般so层函数第一个参数都是JniEnv，第二个参数是jclass，从第三个参数开始是我们java层传入的参数
                     onEnter: function(args) {
                         var datas = [];
-                        datas.push({type:"stack", data:get_stack_trace(), hookName:"hook_so", funcName:func_name});
+                        datas.push({type:"stack", data:get_stack_trace(), funcName:func_name});
                         let args_list = get_arguments_for_so(args, 4);
-                        datas.push({type:"asm_args", data:args_list, hookName:"hook_so", funcName:func_name});
+                        datas.push({type:"asm_args", data:args_list});
                         send(datas);
                     },
                     onLeave: function(ret){ //onLeave: 该函数执行结束要执行的代码，其中ret参数即是返回值
-                        send({type:"return", value:(ret!=null?ret.toString():"null"), hookName:"hook_so", funcName:func_name});
+                        send({type:"return", value:(ret!=null?ret.toString():"null"), funcName:func_name});
                     }
                 });
-                console.log(clr_yellow(module_name + '[' + ptr_func + '] ' + func_name + " is hooked..."));
+                console.log(clr_yellow(func_name + " is hooked..."));
             }
             catch(err){
             }
@@ -542,15 +551,31 @@ function hook_so(module_name){
     });
 }
 
+function hook_okhttp_execute(){
+    return hook_func_frame('com.android.okhttp.Call', 'execute', function(){
+            let datas = [];
+            var timestamp = (new Date()).getTime();
+            let func_name = "com.android.okhttp.Call.execute()";
+            datas.push({type:"stack", data:get_stack_trace(), timestamp:timestamp, funcName:func_name});
+            var response = this.execute();
+            var request = this.request();
+            datas.push(gen_request_data(request));
+            datas.push(gen_response_data(response));
+            send_msg(datas)
+            return response;
+        });
+}
+
 function hook_okhttp3_execute(){
     return hook_func_frame('okhttp3.RealCall', 'execute', function(){
             let datas = [];
             var timestamp = (new Date()).getTime();
-            datas.push({type:"stack", data:get_stack_trace(), timestamp:timestamp});
+            let func_name = "okhttp3.RealCall.execute()";
+            datas.push({type:"stack", data:get_stack_trace(), timestamp:timestamp, funcName:func_name});
             var response = this.execute();
             var request = this.request();
-            datas.push(gen_request_data(request, timestamp, 'Execute'));
-            datas.push(gen_response_data(response, timestamp, 'Execute'));
+            datas.push(gen_request_data(request));
+            datas.push(gen_response_data(response));
             send_msg(datas)
             return response;
         });
@@ -561,12 +586,13 @@ function hook_okhttp3_CallServer(){
         var InterceptorClass = Java.use("okhttp3.internal.http.CallServerInterceptor");
         InterceptorClass.intercept.implementation=function(chain){
             let datas = [];
+            let func_name = "okhttp3.internal.http.CallServerInterceptor.intercept()";
             var timestamp = (new Date()).getTime();
-            datas.push({type:"stack", data:get_stack_trace(), timestamp:timestamp});
+            datas.push({type:"stack", data:get_stack_trace(), timestamp:timestamp, funcName:func_name});
             var request = chain.request();
             var response = this.intercept(chain);
-            datas.push(gen_request_data(request, timestamp, 'CallServer'));
-            datas.push(gen_response_data(response, timestamp, 'CallServer'));
+            datas.push(gen_request_data(request));
+            datas.push(gen_response_data(response));
             send_msg(datas)
             return response;
         }
@@ -578,12 +604,14 @@ function hook_intercept(class_name){
     return wrap_java_perform(() => {
         var InterceptorClass = Java.use(class_name);
         InterceptorClass.intercept.implementation=function(chain){
+            let datas = [];
+            let func_name = class_name + ".intercept()";
             var timestamp = (new Date()).getTime();
+            datas.push({type:"stack", data:get_stack_trace(), timestamp:timestamp, funcName:func_name});
             var request = chain.request();
             var response = this.intercept(chain);
-            let datas = [];
-            datas.push(gen_request_data(request, timestamp, class_name));
-            datas.push(gen_response_data(response, timestamp, class_name));
+            datas.push(gen_request_data(request));
+            datas.push(gen_response_data(response));
             send_msg(datas);
             return response;
         }
@@ -610,7 +638,7 @@ function dump_class(class_name){
         msgs.push(clr_bright_green("------------  " + class_name + "  ------------"));
         //获取类的所有字段
         var fields = []
-        var field_array = cls.class.getFields();
+        var field_array = cls.class.getDeclaredFields();
         for (var i = 0; i < field_array.length; i++) {
             var field = field_array[i]; //当前成员
             var field_name = field.getName();
@@ -685,22 +713,22 @@ function list_so_func(module_name){
         var datas = [];
         var libxx = Process.getModuleByName(module_name);
         datas.push(clr_bright_green("--------------------------  " + libxx.name + "  --------------------------"));
-        datas.push("    "+clr_bright_gray(clr_reverse("name"))+": " + clr_yellow(libxx.name));
-        datas.push("    "+clr_bright_gray(clr_reverse("base"))+": " + clr_yellow(libxx.base));
-        datas.push("    "+clr_bright_gray(clr_reverse("size"))+": " + clr_yellow(ptr(libxx.size)));
+        datas.push("    "+clr_bright_gray(clr_reverse("name"))+": " + clr_cyan(libxx.name));
+        datas.push("    "+clr_bright_gray(clr_reverse("base"))+": " + clr_cyan(libxx.base));
+        datas.push("    "+clr_bright_gray(clr_reverse("size"))+": " + clr_cyan(ptr(libxx.size)));
         datas.push(clr_bright_green("--------------------------  exports  --------------------------"));
         datas.push("    "+clr_bright_gray(clr_reverse("address\toffset\tfunction")));
 
         var exports = libxx.enumerateExports();
         for(var i = 0; i < exports.length; i++) {
-            datas.push("    "+exports[i].address+"\t"+ptr(exports[i].address-libxx.base)+"\t"+clr_yellow(exports[i].name));
+            datas.push("    "+exports[i].address+"\t"+ptr(exports[i].address-libxx.base)+"\t"+clr_cyan(exports[i].name));
         }
 
         datas.push(clr_bright_green("--------------------------  imports  --------------------------"));
         datas.push("    "+clr_bright_gray(clr_reverse("address\tmodule\t\t\tfunction")));
         var imports =  libxx.enumerateImports();
         for(var i = 0; i < imports.length; i++) {
-            datas.push("    "+imports[i].address+"\t"+clr_bright_blue(clr_underline(imports[i].module))+"\t"+clr_yellow(imports[i].name));
+            datas.push("    "+imports[i].address+"\t"+clr_bright_blue(clr_underline(imports[i].module))+"\t"+clr_cyan(imports[i].name));
          }
         /* 暂时没有发现实用价值，先注释掉 by Ryan
         datas.push(clr_bright_green("--------------------------  symbols  --------------------------"));
@@ -1103,3 +1131,21 @@ function probe_request_values(request, cls){
     return ret_values;
 }
 
+function dump_object(_this){
+    let class_name = get_object_class(_this);
+    let fields = get_fields_ex(_this);
+    send({type:"fields", before:JSON.stringify(fields), class:class_name});
+}
+
+function search_instance(class_name){
+    return wrap_java_perform(() => {
+        Java.choose(class_name, {
+            onMatch: function(instance){
+                dump_object(instance);
+            },
+            onComplete: function(){
+                console.log("search finished!");
+            }
+        });
+    });
+}

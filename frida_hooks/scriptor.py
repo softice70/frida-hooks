@@ -47,6 +47,8 @@ class Scriptor:
         {'api': 'hookSo', 'func': 'hook_so', 'persistent': True, 'is_option': True,
          'help': 'hook all functions of some module',
          'params': [{"name": "module", "type": "string"}]},
+        {'api': 'hookOkhttpExecute', 'func': 'hook_okhttp_execute', 'persistent': True, 'is_option': True,
+         'help': 'hook com.android.okhttp.Call.execute, suggest to use when viewing request'},
         {'api': 'hookOkhttp3Execute', 'func': 'hook_okhttp3_execute', 'persistent': True, 'is_option': True,
          'help': 'hook okHttp3.RealCall.execute, suggest to use when viewing request'},
         {'api': 'hookOkhttp3Callserver', 'func': 'hook_okhttp3_CallServer', 'persistent': True, 'is_option': True,
@@ -70,6 +72,9 @@ class Scriptor:
              {"name": "offset", "type": "int"},
              {"name": "length", "type": "int"}
          ]},
+        {'func': 'search_app', 'persistent': False, 'is_option': True,
+         'help': 'search the specified app',
+         'params': [{"name": "app", "type": "string"}]},
         {'api': 'searchClass', 'func': 'search_class', 'persistent': False, 'is_option': True,
          'help': 'search the class that contains the specified keyword',
          'params': [{"name": "keyword", "type": "string"}]},
@@ -91,6 +96,9 @@ class Scriptor:
              {"name": "type", "type": "string"},
              {"name": "exclude", "type": "string", "isOptional": True}
          ]},
+        {'api': 'searchInstance', 'func': 'search_instance', 'persistent': False, 'is_option': True,
+         'help': 'search the instance of class',
+         'params': [{"name": "class", "type": "string"}]},
         {'api': 'searchInMemory', 'func': 'search_in_memory', 'persistent': False, 'is_option': False},
         {'api': 'memoryDump', 'func': 'memory_dump', 'persistent': False, 'is_option': False},
         {'api': 'scanDex', 'func': 'scan_dex', 'persistent': False, 'is_option': False},
@@ -99,6 +107,7 @@ class Scriptor:
     ]
     _frida_cmds = _original_frida_cmds[:]
     _script_params = [
+        {'name': 'app_name', "option_name": 'app', 'type': 'string', 'default': '', 'help': 'the name of app'},
         {'name': 'module_name', "option_name": 'module', 'type': 'string', 'default': '', 'help': 'the name of so'},
         {'name': 'class_name', "option_name": 'class', 'type': 'string', 'default': '', 'help': 'the name of class'},
         {'name': 'func_name', "option_name": 'func', 'type': 'string', 'default': '', 'help': 'the name of function'},
@@ -266,7 +275,6 @@ class Scriptor:
                         if not Scriptor._is_silence:
                             print_screen(f'{clr_bright_purple("*")} {msg}', False)
                         write_log(msg)
-                print_prompt()
             else:
                 if not Scriptor._is_silence:
                     print_screen(msg_data)
@@ -275,70 +283,65 @@ class Scriptor:
             if not Scriptor._is_silence:
                 print_screen(message)
             write_log(message)
+        print_prompt()
 
     @staticmethod
     def _handle_one_message(msg_data):
         text_to_print = ''
         _underline = "_" * 20
         if 'type' in msg_data.keys():
-            if msg_data['type'] == 'stack' and Scriptor._show_detail:
-                straces = re.split(',', msg_data['data'].encode('utf8', 'ignore').decode('utf8'))
+            if msg_data['type'] == 'stack':
                 timestamp = f"[{str(msg_data['timestamp'])}]" if 'timestamp' in msg_data.keys() else ""
-                hook_name = msg_data["funcName"] if 'hookName' in msg_data.keys() else ''
-                text_to_print = clr_bright_green(f'{_underline}{"stack: %s %s" % (hook_name, timestamp):^40}'
-                                                 + f'{_underline}\n  ') + '\n  '.join(straces)
+                hook_name = msg_data["funcName"] if 'funcName' in msg_data.keys() else ''
+                text_to_print = clr_bright_green(clr_blink(f'{_underline}{"%s %s" % (timestamp, hook_name):^40}'
+                                                           + f'{_underline}\n'))
+                if Scriptor._show_detail:
+                    straces = re.split(',', msg_data['data'].encode('utf8', 'ignore').decode('utf8'))
+                    text_to_print = text_to_print + clr_bright_green(f'stack:\n  ') + '\n  '.join(straces)
             elif msg_data['type'] == 'asm_args':
-                timestamp = ("[" + str(msg_data['timestamp']) + "]") if 'timestamp' in msg_data.keys() else ""
-                args = msg_data['data']
                 arg_list = []
-                for key in args.keys():
-                    arg_list.append('  arg[' + key + ']=' + clr_yellow(str(args[key])))
-                hook_name = msg_data["funcName"] if 'hookName' in msg_data.keys() else ''
-                text_to_print = clr_bright_green(f'{_underline}{"arguments: %s %s" % (hook_name, timestamp):^40}'
-                                                 + f'{_underline}\n') + '\n'.join(arg_list)
+                for key in msg_data['data'].keys():
+                    arg_list.append(key + '\t' + clr_cyan(str(msg_data['data'][key])))
+                text_to_print = clr_bright_green(f'arguments:[{len(arg_list)}]\n  ') + '\n  '.join(arg_list)
             elif msg_data['type'] == 'arguments':
-                timestamp = ("[" + str(msg_data['timestamp']) + "]") if 'timestamp' in msg_data.keys() else ""
                 args_before = json.loads(msg_data['before'])
                 args_after = json.loads(msg_data['after'])
                 arg_list = []
                 for key in args_before.keys():
                     arg_class = f"\t{args_before[key]['class']}" if len(args_before[key]['class']) > 0 else ''
                     if args_before[key]['value'] == args_after[key]['value']:
-                        arg_list.append(f'  {key}{arg_class}\t{clr_yellow(str(args_before[key]["value"]))}')
+                        arg_list.append(f'  {key}:{arg_class}\t{clr_yellow(str(args_before[key]["value"]))}')
                     else:
-                        arg_list.append(' *' + key + arg_class + '\n    before: ' \
+                        arg_list.append(' *' + key + ':' + arg_class + '\n    before: ' \
                                         + clr_yellow(str(args_before[key]["value"])) \
                                         + '\n     after: ' + clr_yellow(str(args_after[key]["value"])))
                     if Scriptor._show_detail and len(args_before[key]['fields'].keys()) > 0:
                         fields_before = args_before[key]['fields']
                         fields_after = args_after[key]['fields']
-                        field_list = Scriptor.__prepare_fields_msg(fields_before, fields_after, "\t    └")
+                        field_list = Scriptor.__prepare_fields_msg(fields_before, fields_after, "    └")
                         arg_list += field_list
-                hook_name = msg_data["funcName"] if 'hookName' in msg_data.keys() else ''
-                text_to_print = clr_bright_green(f'{_underline}{"arguments: %s %s" % (hook_name, timestamp):^40}'
-                                                 + f'{_underline}\n') + '\n'.join(arg_list)
+                text_to_print = clr_bright_green(f'arguments:[{len(args_before)}]\n') + '\n'.join(arg_list)
             elif msg_data['type'] == 'fields' and Scriptor._show_detail:
-                timestamp = ("[" + str(msg_data['timestamp']) + "]") if 'timestamp' in msg_data.keys() else ""
                 fields_before = json.loads(msg_data['before'])
                 fields_after = json.loads(msg_data['after']) if 'after' in msg_data.keys() else fields_before
                 field_list = Scriptor.__prepare_fields_msg(fields_before, fields_after)
-                hook_name = msg_data["funcName"] if 'hookName' in msg_data.keys() else ''
-                text_to_print = clr_bright_green(f'{_underline}{"fields: %s %s" % (hook_name, timestamp):^40}'
-                                                 + f'{_underline}\n') + '\n'.join(field_list)
+                class_name = msg_data["class"] + " " if 'class' in msg_data.keys() else ''
+                text_to_print = clr_bright_green(f'{class_name}fields:[{len(fields_before)}]\n') + '\n'.join(field_list)
             elif msg_data['type'] == 'return':
-                timestamp = ("[" + str(msg_data['timestamp']) + "]") if 'timestamp' in msg_data.keys() else ""
+                if 'funcName' in msg_data.keys():
+                    text_to_print = clr_bright_green(clr_blink(f'{_underline}{msg_data["funcName"]:^40}'
+                                                               + f'{_underline}\n'))
+                ret_class = f"{msg_data['class']}\t" if len(msg_data['class']) > 0 else ''
+                text_to_print += clr_bright_green('return:\n') + f'  {ret_class}{clr_yellow(msg_data["value"])}\n'
                 field_list = []
-                if Scriptor._show_detail:
+                if Scriptor._show_detail and 'fields' in msg_data.keys():
                     fields = json.loads(msg_data['fields'])
                     for key in fields.keys():
                         field_name = fields[key]['field'] if 'field' in fields[key].keys() else key
-                        field_info = "  └ field: " + clr_bright_cyan(field_name) + "\tclass: " + fields[key]['class'] \
+                        field_info = "    └ field: " + clr_bright_cyan(field_name) + "\tclass: " + fields[key]['class'] \
                                      + "\tvalue: " + clr_bright_purple(str(fields[key]['value']))
                         field_list.append(field_info)
-                hook_name = msg_data["funcName"] if 'hookName' in msg_data.keys() else ''
-                text_to_print = clr_bright_green(f'{_underline}{"return: %s %s" % (hook_name, timestamp):^40}'
-                                                 + f'{_underline}') + "\n" + clr_yellow(msg_data['value']) \
-                                                 + '\n' + '\n'.join(field_list)
+                    text_to_print += '\n'.join(field_list)
             elif msg_data['type'] == 'registerNatives':
                 methods = json.loads(msg_data['methods'])
                 method_infos = []
@@ -349,15 +352,9 @@ class Scriptor:
                 text_to_print = clr_bright_green(f'{_underline}{"registerNatives: %d" % len(methods):^40}'
                                                  + f'{_underline}\n') + '\n'.join(method_infos)
             elif msg_data['type'] == 'request':
-                timestamp = ("[" + str(msg_data['timestamp']) + "]") if 'timestamp' in msg_data.keys() else ""
-                param_infos = parse_request(msg_data)
-                text_to_print = clr_bright_green(f"{_underline} {'%s:request %s' % (msg_data['from'], timestamp):^40}"
-                                                 + f" {_underline}\n") + '\n'.join(param_infos)
+                text_to_print = clr_bright_green(f'request:\n') + '\n'.join(parse_request(msg_data))
             elif msg_data['type'] == 'response':
-                timestamp = ("[" + str(msg_data['timestamp']) + "]") if 'timestamp' in msg_data.keys() else ""
-                response_infos = parse_response(msg_data)
-                text_to_print = clr_bright_green(f"{_underline} {'%s:response %s' % (msg_data['from'], timestamp):^40}"
-                                                 + f" {_underline}\n") + '\n'.join(response_infos)
+                text_to_print = clr_bright_green(f'response:\n') + '\n'.join(parse_response(msg_data))
         else:
             text_to_print = Scriptor.__get_print_text_for_dict(msg_data)
         if not Scriptor._is_silence:
@@ -374,8 +371,8 @@ class Scriptor:
                              + "\tvalue: " + clr_bright_purple(str(fields_before[key]['value']))
             else:
                 field_info = prefix + "*field: " + clr_bright_cyan(field_name) + "\tclass: " + fields_before[key]['class'] \
-                             + "\n    value_before: " + clr_bright_purple(str(fields_before[key]['value'])) \
-                             + "\n    value_after : " + clr_bright_purple(str(fields_after[key]['value']))
+                             + "\n" + " " * len(prefix) + "  value_before: " + clr_bright_purple(str(fields_before[key]['value'])) \
+                             + "\n" + " " * len(prefix) + "  value_after : " + clr_bright_purple(str(fields_after[key]['value']))
             field_list.append(field_info)
         return field_list
 

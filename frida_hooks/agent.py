@@ -25,6 +25,7 @@ class FridaAgent:
         self._device = None
         self._session = None
         self._script = None
+        self._script_src = None
         self._app_package = None
         self._scripts_map = {}
         self._is_app_suspend = False
@@ -75,13 +76,13 @@ class FridaAgent:
         else:
             print(f'{name}[pid:{frida_server_pid}] is running...')
 
-    def list_app(self, check_frida_server=True):
+    def list_app(self, app_name=None, check_frida_server=True):
         if not check_frida_server or FridaAgent.start_frida_server() > 0:
             app_list = self._device.enumerate_applications()
             app_list.sort(key=lambda s: s.identifier)
             for item in app_list:
-                print(
-                    f'{item.pid:<10}{clr_bright_cyan(item.identifier):<60}{clr_yellow(item.name)}')
+                if not app_name or item.name.find(app_name) >= 0:
+                    print(f'{item.pid:<10}{clr_bright_cyan(item.identifier):<60}{clr_yellow(item.name)}')
         else:
             raise Exception()
 
@@ -137,9 +138,11 @@ class FridaAgent:
                 elif script['cmd'] == 'dump_so':
                     self._dump_so(script)
                 elif script['cmd'] == 'list_app':
-                    self.list_app(False)
+                    self.list_app(check_frida_server=False)
                 elif script['cmd'] == 'list_process':
                     self.list_process(False)
+                elif script['cmd'] == 'search_app':
+                    self.list_app(app_name=script['params']['app'], check_frida_server=False)
                 elif script['apiCmd'] != '':
                     ret = eval(script['apiCmd'])
             except Exception as e:
@@ -170,7 +173,7 @@ class FridaAgent:
                                  help='the port of http server, default: 8989')
         running_group.add_option("", "--silence", action="store_true", dest="silence", default=False,
                                  help='no message is output to screen')
-        running_group.add_option("-d", "--show_detail", action="store_true", dest="show_detail", default=False,
+        running_group.add_option("-d", "--show_detail", action="store_true", dest="show_detail", default=True,
                                  help='show and log the detail infomation')
         running_group.add_option("-f", "--script_file", action="store", type="string", dest="file_script",
                                  help='set the script file include on_message')
@@ -193,23 +196,20 @@ class FridaAgent:
     def _print_internal_cmd_help():
         help_strs = [
             f'Usage: cmd [option]\ncmd:',
-            f'\n  {clr_yellow("h")}{clr_bright_cyan("elp")}\t\tshow this help message',
-            f'\n  {clr_yellow("o")}{clr_bright_cyan("ptions")}\tprint options',
-            f'\n  {clr_yellow("l")}{clr_bright_cyan("ist")}\t\tshow hook list',
-            f'\n  {clr_yellow("d")}{clr_bright_cyan("isable <key>")}\tset disable the hook item by key',
-            f'\n  {clr_yellow("e")}{clr_bright_cyan("nable <key>")}\tset enable the hook item by key',
-            f'\n  {clr_bright_cyan("re")}{clr_yellow("m")}{clr_bright_cyan("ove <key>")}\tremove the hook item by key',
-            f'\n  {clr_yellow("r")}{clr_bright_cyan("un [options]")}\trun hook option, see also <{clr_bright_cyan("options")}>',
-            f'\n       example: run --hook_class --class com.xxx.xxx.xxxxxx.Classxxx',
-            f'\n                run --hook_func --class com.xxx.xxx.xxxxxx.Classxxx --func Funcxxx',
-            f'\n                run --hook_so_func --module libxxx.so --func getSign',
-            f'\n                run --hook_so_func --module libxxx.so --addr 0xedxxxxxx',
-            f'\n  {clr_yellow("c")}{clr_bright_cyan("onfig <file>")}\tload the config file',
-            f'\n  {clr_bright_cyan("lo")}{clr_yellow("g")}{clr_bright_cyan(" [file]")}\tset the log file, and if file is not set, the log will be turned off',
-            f'\n  {clr_bright_cyan("re")}{clr_yellow("s")}{clr_bright_cyan("tart")}\trestart the hook session',
-            f'\n  {clr_bright_cyan("de")}{clr_yellow("t")}{clr_bright_cyan("ail")}\ttoggles whether to display details',
-            f'\n  {clr_bright_cyan("cls")}\t\tclear screen',
-            f'\n  {clr_yellow("q")}{clr_bright_cyan("uit")}\t\tquit'
+            f'\n  {clr_yellow("h")}{clr_bright_cyan("elp")}{" "*(32-len("help"))}show this help message',
+            f'\n  {clr_yellow("r")}{clr_bright_cyan("un [options]")}{" "*(32-len("run [options]"))}run hook option, see also <{clr_bright_cyan("options")}>',
+            f'\n  {clr_yellow("o")}{clr_bright_cyan("ptions")}{" "*(32-len("options"))}print options',
+            f'\n  {clr_yellow("l")}{clr_bright_cyan("ist")}{" "*(32-len("list"))}show hook list',
+            f'\n  {clr_yellow("d")}{clr_bright_cyan("isable <key>")}{" "*(32-len("disable <key>"))}set disable the hook item by key',
+            f'\n  {clr_yellow("e")}{clr_bright_cyan("nable <key>")}{" "*(32-len("enable <key>"))}set enable the hook item by key',
+            f'\n  {clr_bright_cyan("re")}{clr_yellow("m")}{clr_bright_cyan("ove <key>")}{" "*(32-len("remove <key>"))}remove the hook item by key',
+            f'\n  {clr_yellow("c")}{clr_bright_cyan("onfig <file>")}{" "*(32-len("config <file>"))}load the config file',
+            f'\n  {clr_bright_cyan("lo")}{clr_yellow("g")}{clr_bright_cyan(" [file]")}{" "*(32-len("log [file]"))}set the log file, and if file is not set, the log will be turned off',
+            f'\n  {clr_bright_cyan("re")}{clr_yellow("s")}{clr_bright_cyan("tart")}{" "*(32-len("restart"))}restart the hook session',
+            f'\n  {clr_bright_cyan("de")}{clr_yellow("t")}{clr_bright_cyan("ail")}{" "*(32-len("detail"))}toggles whether to display details',
+            f'\n  {clr_bright_cyan("script [line number]")}{" "*(32-len("script [line number]"))}show source code of script',
+            f'\n  {clr_bright_cyan("cls")}{" "*(32-len("cls"))}clear screen',
+            f'\n  {clr_yellow("q")}{clr_bright_cyan("uit")}{" "*(32-len("quit"))}quit'
         ]
         print("".join(help_strs))
 
@@ -478,6 +478,7 @@ class FridaAgent:
 
     def _load_script(self, wait_time_in_sec=10):
         scripts_str, fun_on_msg = Scriptor.gen_script_str(self._scripts_map)
+        self._script_src = re.split('\n', scripts_str)
         self._script = None
         ret = False
         self._script = self._session.create_script(scripts_str)
@@ -548,6 +549,9 @@ class FridaAgent:
                     os.system('cls')
                 elif cmd[0] == 'run' or cmd[0] == 'r':
                     self._exec_cmd_run(cmd)
+                elif cmd[0] == 'script':
+                    if self._print_script(cmd):
+                        break
                 else:
                     print(f'{clr_bright_red("unknown command!")}')
                     self._print_internal_cmd_help()
@@ -588,6 +592,8 @@ class FridaAgent:
             self.show_frida_server_status()
         elif options.list_app:
             self.list_app(check_frida_server=True)
+        elif options.search_app:
+            self.list_app(app_name=options.app_name, check_frida_server=True)
         elif options.list_process:
             self.list_process(check_frida_server=True)
         else:
@@ -651,16 +657,19 @@ class FridaAgent:
                 print(clr_bright_red(f"[Except] - {e}: {info}"))
         print_screen(clr_bright_green('Dex dump finished!'))
 
+    def _print_script(self, cmd):
+        line_no = None
+        start_line = 0
+        end_line = len(self._script_src) - 1
+        if len(cmd) == 2 and is_number(cmd[1]):
+            line_no = int(cmd[1])
+            start_line = max(line_no - 10, 0)
+            end_line = min(start_line + 21, len(self._script_src) - 1)
+            start_line = max(end_line - 21, 0)
 
-
-
-
-
-
-
-
-
-
-
-
+        for i in range(start_line, end_line + 1):
+            if i == line_no:
+                print(f'{clr_yellow("==> ")}{clr_bright_cyan(str(i)):<20}{self._script_src[i]}')
+            else:
+                print(f'    {clr_bright_cyan(str(i)):<20}{self._script_src[i]}')
 
