@@ -14,6 +14,7 @@ class Scriptor:
     _original_frida_cmds = [
         {'func': 'list_app', 'persistent': False, 'is_option': True, 'help': 'list all installed applications'},
         {'func': 'list_process', 'persistent': False, 'is_option': True, 'help': 'list processes'},
+        {'api': 'loadAllClass', 'func': 'load_all_class', 'persistent': False, 'is_option': True, 'help': 'load class'},
         {'api': 'listClass', 'func': 'list_class', 'persistent': False, 'is_option': True,
          'help': 'list classes of Java'},
         {'api': 'listClassLoaders', 'func': 'list_class_loaders', 'persistent': False, 'is_option': True,
@@ -30,6 +31,8 @@ class Scriptor:
         {'api': 'listSoFunc', 'func': 'list_so_func', 'persistent': False, 'is_option': True,
          'help': 'list all functions of the so',
          'params': [{"name": "module", "type": "string"}]},
+        {'api': 'listRegisterNatives', 'func': 'list_register_natives', 'persistent': False, 'is_option': True,
+         'help': 'list the register natives function, please use --spawn to start the frida-hooks'},
         {'api': 'listThread', 'func': 'list_thread', 'persistent': False, 'is_option': False, 'help': 'list thread'},
         {'api': 'hookFunc', 'func': 'hook_func', 'persistent': True, 'is_option': True,
          'help': 'hook the method of one class',
@@ -56,15 +59,14 @@ class Scriptor:
         {'api': 'hookIntercept', 'func': 'hook_intercept', 'persistent': True, 'is_option': True,
          'help': 'hook the intercept() of some okhttp3 interceptor',
          'params': [{"name": "class", "type": "string"}]},
-        {'api': 'hookRegisternatives', 'func': 'hook_RegisterNatives', 'persistent': True, 'is_option': True,
-         'help': 'hook the RegisterNatives function, please use --spawn to start the frida-hooks'},
         {'api': 'dumpClass', 'func': 'dump_class', 'persistent': False, 'is_option': True,
          'help': 'dump the class',
          'params': [{"name": "class", "type": "string"}]},
         {'func': 'dump_so', 'persistent': False, 'is_option': True,
          'help': 'dump so from memory to file',
          'params': [{"name": "module", "type": "string"}]},
-        {'func': 'dump_dex', 'persistent': False, 'is_option': True, 'help': 'dump dex from memory to file'},
+        {'func': 'dump_dex', 'persistent': False, 'is_option': True,
+         'help': 'dump dex files, please use --spawn to start the frida-hooks'},
         {'api': 'dumpSoMemory', 'func': 'dump_so_memory', 'persistent': False, 'is_option': True,
          'help': 'dump the memory of the module, Parameters: --module, --offset, --length',
          'params': [
@@ -102,6 +104,7 @@ class Scriptor:
         {'api': 'searchInMemory', 'func': 'search_in_memory', 'persistent': False, 'is_option': False},
         {'api': 'memoryDump', 'func': 'memory_dump', 'persistent': False, 'is_option': False},
         {'api': 'scanDex', 'func': 'scan_dex', 'persistent': False, 'is_option': False},
+        {'api': 'hookLibArt', 'func': 'hook_lib_art', 'persistent': False, 'is_option': False},
         {'api': 'findSo', 'func': 'find_so', 'persistent': False, 'is_option': False},
         {'api': 'setColorMode', 'func': 'set_color_mode', 'persistent': False, 'is_option': False},
     ]
@@ -347,10 +350,9 @@ class Scriptor:
                 method_infos = []
                 for item in methods:
                     method_infos.append(
-                        f'  {clr_yellow(item["java_class"])} {clr_bright_cyan(item["module_name"])} {item["fnPtr"]}'
+                        f'  {clr_bright_cyan(item["module_name"])} {clr_yellow(item["java_class"])} {item["fnPtr"]}'
                         + f' {item["offset"]} {clr_bright_purple(item["name"])} {item["sig"]}')
-                text_to_print = clr_bright_green(f'{_underline}{"registerNatives: %d" % len(methods):^40}'
-                                                 + f'{_underline}\n') + '\n'.join(method_infos)
+                text_to_print = '\n'.join(method_infos)
             elif msg_data['type'] == 'request':
                 text_to_print = clr_bright_green(f'request:\n') + '\n'.join(parse_request(msg_data))
             elif msg_data['type'] == 'response':

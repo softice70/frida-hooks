@@ -45,10 +45,25 @@ const not_safe_classes = {
     "android.support.v4.text.PrecomputedTextCompat$Params": true,
     "android.support.v4.text.PrecomputedTextCompat": true,
     "com.taobao.taopai.business.ShareMainNewActivity": true,
+    "com.facebook.imagepipeline.image.EncodedImage": true,
+    "com.facebook.imageutils.ImageMetaData": true,
+    "androidx.appcompat.widget.k": true,
+    "androidx.core.app.JobIntentService$f$a": true,
+    "com.amap.api.col.sl2.c9": true,
+    "androidx.media.k$a": true,
 }
+
+var dex_list = [];
+var native_list = [];
 
 function set_color_mode(is_color_mode){
     _is_color_mode = is_color_mode
+}
+
+function sleep(ms) {
+    return new Promise((resolve) => {
+        setTimeout(resolve, ms);
+    });
 }
 
 function wrap_java_perform(fn){
@@ -132,7 +147,7 @@ function get_fields(_this, field_array){
     return fields;
 }
 
-function get_object_class(_this){
+function get_class_safe(_this){
     try {
         return _this.getClass().getName();
     } catch (e) {
@@ -469,7 +484,7 @@ function hook_func(class_name, method_name){
         let args_after = get_arguments(arguments, arguments.length);
         let fields_after = get_fields_ex(this);
         let ret_fields = get_fields_ex(ret);
-        let ret_class = get_object_class(ret);
+        let ret_class = get_class_safe(ret);
         datas.push({type:"arguments", before:JSON.stringify(args_before), after:JSON.stringify(args_after)});
         datas.push({type:"fields", before:JSON.stringify(fields_before), after:JSON.stringify(fields_after)});
         datas.push({type:"return", class:ret_class, value:(ret!=null?ret.toString():"null"), fields:JSON.stringify(ret_fields)});
@@ -863,6 +878,9 @@ function memory_dump(address, size) {
 //    return new NativePointer(address).readByteArray(size);
 }
 function scan_dex(enable_deep_search) {
+    if(dex_list.length > 0){
+        return dex_list;
+    }
     var result = [];
     Process.enumerateRanges('r--').forEach(function (range) {
         try {
@@ -928,49 +946,6 @@ function scan_dex(enable_deep_search) {
     });
 
     return result;
-}
-function hook_RegisterNatives() {
-    return wrap_java_perform(() => {
-        var symbols = Module.enumerateSymbolsSync("libart.so");
-        var addrRegisterNatives = null;
-        for (var i = 0; i < symbols.length; i++) {
-            var symbol = symbols[i];
-            //_ZN3art3JNI15RegisterNativesEP7_JNIEnvP7_jclassPK15JNINativeMethodi
-            if (symbol.name.indexOf("art") >= 0 &&
-                    symbol.name.indexOf("JNI") >= 0 &&
-                    symbol.name.indexOf("RegisterNatives") >= 0 &&
-                    symbol.name.indexOf("CheckJNI") < 0) {
-                addrRegisterNatives = symbol.address;
-                console.log(clr_yellow(clr_blink("RegisterNatives is hooked at "))+clr_bright_cyan(symbol.address+symbol.name));
-            }
-        }
-
-        if (addrRegisterNatives != null) {
-            Interceptor.attach(addrRegisterNatives, {
-                onEnter: function (args) {
-                    var env = args[0];
-                    var java_class = args[1];
-                    var class_name = Java.vm.tryGetEnv().getClassName(java_class);
-                    var methods_ptr = ptr(args[2]);
-                    var method_count = parseInt(args[3]);
-                    var methods = [];
-                    for (var i = 0; i < method_count; i++) {
-                        var name_ptr = Memory.readPointer(methods_ptr.add(i * Process.pointerSize * 3));
-                        var sig_ptr = Memory.readPointer(methods_ptr.add(i * Process.pointerSize * 3 + Process.pointerSize));
-                        var fnPtr_ptr = Memory.readPointer(methods_ptr.add(i * Process.pointerSize * 3 + Process.pointerSize * 2));
-
-                        var name = Memory.readCString(name_ptr);
-                        var sig = Memory.readCString(sig_ptr);
-                        var find_module = Process.findModuleByAddress(fnPtr_ptr);
-                        var method_info = {java_class: class_name, name: name, sig: sig, fnPtr: fnPtr_ptr, module_name: find_module.name, module_base: find_module.base, offset: ptr(fnPtr_ptr).sub(find_module.base)};
-                        methods.push(method_info);
-                    }
-                    let data = {type:"registerNatives", methods:JSON.stringify(methods)};
-                    send(data);
-                }
-            });
-        }
-    });
 }
 function search_class(keyword){
     let pattern = new RegExp(keyword, 'i');
@@ -1132,7 +1107,7 @@ function probe_request_values(request, cls){
 }
 
 function dump_object(_this){
-    let class_name = get_object_class(_this);
+    let class_name = get_class_safe(_this);
     let fields = get_fields_ex(_this);
     send({type:"fields", before:JSON.stringify(fields), class:class_name});
 }
@@ -1148,4 +1123,138 @@ function search_instance(class_name){
             }
         });
     });
+}
+
+function load_all_class() {
+    return wrap_java_perform(() => {
+        var DexFileclass = Java.use("dalvik.system.DexFile");
+        var BaseDexClassLoaderclass = Java.use("dalvik.system.BaseDexClassLoader");
+        var DexPathListclass = Java.use("dalvik.system.DexPathList");
+        var total_class = 0;
+
+        Java.enumerateClassLoaders({
+            onMatch: function (loader) {
+                try {
+                    var basedexclassloaderobj = Java.cast(loader, BaseDexClassLoaderclass);
+                    var pathList = basedexclassloaderobj.pathList.value;
+                    var pathListobj = Java.cast(pathList, DexPathListclass)
+                    var dexElements = pathListobj.dexElements.value;
+                    for (var index in dexElements) {
+                        var element = dexElements[index];
+                        try {
+                            var dexfile = element.dexFile.value;
+                            var dexfileobj = Java.cast(dexfile, DexFileclass);
+                            console.log("dexFile:", dexfileobj);
+                            const classNames = [];
+                            const enumeratorClassNames = dexfileobj.entries();
+                            while (enumeratorClassNames.hasMoreElements()) {
+                                var className = enumeratorClassNames.nextElement().toString();
+                                classNames.push(className);
+                                try {
+                                    loader.loadClass(className);
+                                    total_class++;
+                                } catch (error) {
+                                    console.log(clr_red("loadClass error: "), clr_red(error));
+                                }
+                            }
+                        } catch (error) {
+                            // console.log(clr_red("dexfile error: "), clr_red(error));
+                        }
+                    }
+                } catch (error) {
+                    // console.log(clr_red("loader error: "), clr_red(error));
+                }
+            },
+            onComplete: function () {
+
+            }
+        })
+        console.log("total of", clr_cyan(total_class), " classes were loaded.");
+    });
+}
+
+/*
+* dump_dex
+* Author: lasting-yang
+* HomePage: https://github.com/lasting-yang/frida_dump
+* */
+function hook_lib_art() {
+    var libart = Process.findModuleByName("libart.so");
+    var symbols = libart.enumerateSymbols();
+    var addr_DefineClass = null;
+    var addr_RegisterNatives = null;
+    for (var index = 0; index < symbols.length; index++) {
+        var symbol = symbols[index];
+        var symbol_name = symbol.name;
+        //这个DefineClass的函数签名是Android9的
+        //_ZN3art11ClassLinker11DefineClassEPNS_6ThreadEPKcmNS_6HandleINS_6mirror11ClassLoaderEEERKNS_7DexFileERKNS9_8ClassDefE
+        if (symbol_name.indexOf("ClassLinker") >= 0 &&
+            symbol_name.indexOf("DefineClass") >= 0 &&
+            symbol_name.indexOf("Thread") >= 0 &&
+            symbol_name.indexOf("DexFile") >= 0) {
+//            console.log(symbol_name, symbol.address);
+            addr_DefineClass = symbol.address;
+        }
+        //_ZN3art3JNI15RegisterNativesEP7_JNIEnvP7_jclassPK15JNINativeMethodi
+        if (symbol.name.indexOf("art") >= 0 &&
+                symbol.name.indexOf("JNI") >= 0 &&
+                symbol.name.indexOf("RegisterNatives") >= 0 &&
+                symbol.name.indexOf("CheckJNI") < 0) {
+            addr_RegisterNatives = symbol.address;
+        }
+    }
+    var dex_maps = {};
+    if (addr_DefineClass) {
+        console.log("[DefineClass:]", clr_cyan(addr_DefineClass));
+        Interceptor.attach(addr_DefineClass, {
+            onEnter: function(args) {
+                var dex_file = args[5];
+                //ptr(dex_file).add(Process.pointerSize) is "const uint8_t* const begin_;"
+                //ptr(dex_file).add(Process.pointerSize + Process.pointerSize) is "const size_t size_;"
+                var base = ptr(dex_file).add(Process.pointerSize).readPointer();
+                var size = ptr(dex_file).add(Process.pointerSize + Process.pointerSize).readUInt();
+                if (dex_maps[base] == undefined) {
+                    dex_maps[base] = size;
+                    var magic = ptr(base).readCString();
+                    if (magic.indexOf("dex") == 0) {
+                        dex_list.push({"addr": base, "size": size});
+                    }
+                }
+            },
+            onLeave: function(retval) {}
+        });
+    }
+    if (addr_RegisterNatives != null) {
+        console.log("[RegisterNatives:]", clr_cyan(addr_RegisterNatives));
+        Interceptor.attach(addr_RegisterNatives, {
+            onEnter: function (args) {
+                var env = args[0];
+                var java_class = args[1];
+                var class_name = Java.vm.tryGetEnv().getClassName(java_class);
+                var methods_ptr = ptr(args[2]);
+                var method_count = parseInt(args[3]);
+                var methods = [];
+                for (var i = 0; i < method_count; i++) {
+                    var name_ptr = Memory.readPointer(methods_ptr.add(i * Process.pointerSize * 3));
+                    var sig_ptr = Memory.readPointer(methods_ptr.add(i * Process.pointerSize * 3 + Process.pointerSize));
+                    var fnPtr_ptr = Memory.readPointer(methods_ptr.add(i * Process.pointerSize * 3 + Process.pointerSize * 2));
+                    var name = Memory.readCString(name_ptr);
+                    var sig = Memory.readCString(sig_ptr);
+                    var find_module = Process.findModuleByAddress(fnPtr_ptr);
+                    var module_name = find_module? find_module.name: 'Unknown';
+                    var offset = find_module? ptr(fnPtr_ptr).sub(find_module.base): '';
+                    var method_info = {java_class: class_name, name: name, sig: sig, fnPtr: fnPtr_ptr,
+                                        module_name: module_name, offset: offset};
+                    methods.push(method_info);
+                }
+                native_list.push({type:"registerNatives", methods:JSON.stringify(methods)});
+            },
+            onLeave: function(retval) {}
+        });
+    }
+}
+
+function list_register_natives(){
+    send_msg(native_list);
+    return native_list;
 }

@@ -487,8 +487,12 @@ class FridaAgent:
             try:
                 self._script.load()
                 if self._is_app_suspend:
+                    self._exec_script_in_spawn_mode()
+                    self._exec_script_cmd_after_load()
                     self._device.resume(self._target_pid)
                     self._is_app_suspend = False
+                else:
+                    self._exec_script_cmd_after_load()
                 ret = True
                 break
             except Exception as e:
@@ -496,7 +500,6 @@ class FridaAgent:
                 time.sleep(1)
                 pass
         self._script.exports.set_color_mode(get_color_mode())
-        self._exec_script_cmd_after_load()
         self._scripts_map = Scriptor.clean_scripts_map(self._scripts_map)
         return ret
 
@@ -507,6 +510,9 @@ class FridaAgent:
     def _exec_script_cmd_after_load(self):
         for key in self._scripts_map.keys():
             self.exec_one_script(self._scripts_map[key])
+
+    def _exec_script_in_spawn_mode(self):
+        self._script.exports.hook_lib_art()
 
     def _run_console(self):
         while self._keep_running:
@@ -638,6 +644,7 @@ class FridaAgent:
         mds = []
         print(clr_bright_green('scanning dex in memory...'))
         matches = self._script.exports.scan_dex(self._enable_deep_search_for_dump_dex)
+        i = 0
         for info in matches:
             try:
                 bs = self._script.exports.memory_dump(info['addr'], info['size'])
@@ -649,10 +656,11 @@ class FridaAgent:
                 if not os.path.exists("./" + self._app_package + "/"):
                     os.mkdir("./" + self._app_package + "/")
                 bs = self._dex_fix(bs)
-                with open(self._app_package + "/" + info['addr'] + ".dex", 'wb') as out:
+                with open(f'{self._app_package}/class{i if i != 0 else ""}.dex', 'wb') as out:
                     out.write(bs)
-                print(clr_bright_green(f"[DEXDump]: DexSize={hex(info['size'])}, DexMd5={md}, SavePath=")
-                      + clr_bright_blue(clr_underline(os.getcwd()+'/'+self._app_package+'/'+info['addr']+'.dex')))
+                    print(clr_bright_green(f"[DEXDump]: DexSize={hex(info['size'])}, DexMd5={md}, SavePath=")
+                        + clr_bright_blue(clr_underline(f"{os.getcwd()}/{self._app_package}/class{i if i != 0 else ''}.dex")))
+                    i += 1
             except Exception as e:
                 print(clr_bright_red(f"[Except] - {e}: {info}"))
         print_screen(clr_bright_green('Dex dump finished!'))

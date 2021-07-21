@@ -157,11 +157,12 @@ $ python .\frida_hook.py com.xxx.foo --dump_so_memory --module libxxx.so --offse
   quit          quit
 ```
 
-相关项目
+Thanks
 -------
 - [https://github.com/hluwa](https://github.com/hluwa)
 - [https://github.com/F8LEFT/SoFixer](https://github.com/F8LEFT/SoFixer)
 - [https://github.com/sensepost/objection](https://github.com/sensepost/objection)
+- [https://github.com/lasting-yang/frida_dump](https://github.com/lasting-yang/frida_dump)
 
 License
 -------
