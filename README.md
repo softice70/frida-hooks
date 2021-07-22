@@ -2,7 +2,7 @@ Frida-Hooks
 ========
 ![在这里插入图片描述](https://github.com/softice70/frida-hooks/blob/main/pics/banner.jpg)
 - Frida是一个面向开发人员、逆向工程师和安全研究人员的动态插桩工具包。[官网：frida.re](https://github.com/frida/frida)
-- [Frida-Hooks]()则是在frida平台上集成了一些常用的脚本，从而使调试更加高效、易用。
+- [Frida-Hooks](https://github.com/softice70/frida-hooks)则是在frida平台上集成了一些常用的脚本，从而使调试更加高效、易用。
 
 主要功能
 --------
