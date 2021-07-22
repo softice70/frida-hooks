@@ -76,31 +76,54 @@ $ frida-hooks
 ![在这里插入图片描述](https://github.com/softice70/frida-hooks/blob/main/pics/demo3.jpg)
 ![在这里插入图片描述](https://github.com/softice70/frida-hooks/blob/main/pics/demo4.jpg)
 - 加载自定义脚本
-    - 参考foo.py编写对应的jscode和on_message
-    - 加载命令，以 foo.py 为例：
-    ```base
-    $ python .\frida_hook.py com.xxx.foo -f foo 
+  - 简单说明
+    - rpc_define: 定义 frida-hooks 扩展信息
+      - func: 要引出的函数名，对应jscode中的函数名
+      - api: func的小驼峰命名，注意一定要符合规范，在http请求时使用，在系统内部又会自动将小驼峰转为下划线命名，故如果命名对不上，则系统找不到相应的函数
+      - is_option: 是否在内部命令的options中显示，并可以以run的方式执行
+      - help: 在options中显示的说明文字
+      - persistent: func是否是长期驻留的功能，如果是，则在执行restart命令时重新加载该函数，以保持自动长期驻留
+      - params: 参数说明，
+        - name:参数名
+        - type: 参数类型，包括 string, int, bool等
+        - isOptional: 是否是可选参数
+    - jscode: 扩展功能的js代码，其中可以使用 frida-hooks 内置的函数，具体可以参考 scripts.js
+    - on_message: 自定义的消息处理函数，如果不定义该函数，则使用 frida-hooks 内置的 on_message 方法
+    - rpc调用说明:
+      - url: 默认地址为 http://127.0.0.1:8989/run ，其中端口可以通过命令行或配置文件修改
+      - method: POST
+      - body:
+        ```json
+        {
+          "cmd": "search_goods",
+          "url": "http://foo.xxx.com/api/search/notes?keyword=",
+          "keyword": "phone"
+        }
+        ```
+  - 可以参考example目录下的foo.py编写对应的rpc_define、jscode和on_message
+  - 加载命令，以 foo.py 为例：
+  ```bash
+  $ frida_hooks com.xxx.foo -f foo 
+  ``` 
+- 运行中可以用"list"命令列出已经加载的hook命令，并可以用"disable"和"enable"命令禁用或启用指定的命令
+![在这里插入图片描述](https://github.com/softice70/frida-hooks/blob/main/pics/demo5.jpg)
+  - "disable"和"enable"命令举例
+    - 禁用全部
+    ```bash
+      > d *
     ```
-#### 操作  
-- 运行状态中可以输入命令
-```text
-  help          show this help message
-  options       print options
-  list          show hook list
-  config <file> load the config file
-  disable <key> set disable the hook item by key
-  enable <key>  set enable the hook item by key
-  remove <key>  remove the hook item by key
-  run [options] run hook option, see also <options>
-       example: --hook_class --class com.xxx.xxx.xxxxxx.Classxxx
-                --hook_func --class com.xxx.xxx.xxxxxx.Classxxx --func Funcxxx
-                --hook_so_func --module libxxx.so --func getSign
-                --hook_so_func --module libxxx.so --addr 0xedxxxxxx
-  restart       restart the hook session
-  cls           clear screen
-  quit          quit
-```
-
+    - 禁用1号命令
+    ```bash
+      > d 1
+    ```
+    - 启用全部
+    ```bash
+      > e *
+    ```
+    - 启用1号命令
+    ```bash
+      > e 1
+    ```
 Thanks
 -------
 - [https://github.com/hluwa](https://github.com/hluwa)
@@ -111,10 +134,3 @@ Thanks
 License
 -------
 Licensed under the Apache License, Version 2.0
-
-ToDo
--------
-- [ ] 安装frida server，使用frida-push
-- [ ] 增加Intent，参考objection
-- [ ] 增加结果过滤功能
-- [ ] 支持多设备选择
