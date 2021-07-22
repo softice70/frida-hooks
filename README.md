@@ -14,8 +14,11 @@ Frida-Hooks
 - DEX的动态脱壳
 - so文件的动态脱壳
 - 运行过程中可以动态地添加或禁用钩子
+- 支持http服务及RPC服务 
+- 支持用户自定义扩展分析功能，并可方便地引出RPC服务和http接口 
 - 支持屏幕彩色输出，使结果显示更加整齐、美观，便于阅读
 - 支持日志功能
+
 
 安装
 ------------
@@ -26,7 +29,8 @@ Frida-Hooks
 依赖
 ------------
 - Python 3.x 
-
+- frida-server
+  - 需将frida-server复制到手机 /data/local/tmp/ 下，并设置相应的可执行权限
 
 使用说明
 ------------
@@ -170,10 +174,7 @@ Licensed under the Apache License, Version 2.0
 
 ToDo
 -------
-- [ ] 增加类或方法的查找功能
 - [ ] 安装frida server，使用frida-push
 - [ ] 增加Intent，参考objection
 - [ ] 增加结果过滤功能
 - [ ] 支持多设备选择
-- [ ] 优化颜色控制代码
-- [ ] write_log要改

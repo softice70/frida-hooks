@@ -406,7 +406,7 @@ function gen_request_data(request){
         return data;
     }else{
         let class_name = trim(cls.toString().replace(/(class|interface)/g, ''));
-        let ret_values = probe_request_values(request, cls)
+        let ret_values = probe_obj_method(request, cls)
         return {type: "request", request: (request != null? request.toString(): "null"),
                 probe: JSON.stringify(ret_values), class: class_name};
     }
@@ -1083,7 +1083,7 @@ function search_return(ret_class, exclude){
     return search_return_core(ret_class, exclude, false);
 }
 
-function probe_request_values(request, cls){
+function probe_obj_method(_this, cls){
     let class_name = trim(cls.toString().replace(/(class|interface)/g, ''));
     let method_array = get_methods_safe(class_name);
     let ret_values = [];
@@ -1097,7 +1097,7 @@ function probe_request_values(request, cls){
                 && str_ret_type != 'boolean' && str_ret_type.indexOf('$') < 0
                 && str_method_name != 'toString'){
             try{
-                let ret = '' + eval('request.' + str_method_name + '()');
+                let ret = '' + eval('_this.' + str_method_name + '()');
                 ret_values.push({method: str_method_name, ret: ret});
             } catch (e) {
             }

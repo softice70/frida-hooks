@@ -658,7 +658,7 @@ class FridaAgent:
                 bs = self._dex_fix(bs)
                 with open(f'{self._app_package}/class{i if i != 0 else ""}.dex', 'wb') as out:
                     out.write(bs)
-                    print(clr_bright_green(f"[DEXDump]: DexSize={hex(info['size'])}, DexMd5={md}, SavePath=")
+                    print(clr_bright_green(f"[DEXDump]: DexSize={clr_cyan(hex(info['size']))}, DexMd5={clr_purple(md)}, SavePath=")
                         + clr_bright_blue(clr_underline(f"{os.getcwd()}/{self._app_package}/class{i if i != 0 else ''}.dex")))
                     i += 1
             except Exception as e:
