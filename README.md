@@ -1,5 +1,6 @@
 Frida-Hooks
 ========
+![在这里插入图片描述](https://github.com/softice70/frida-hooks/blob/main/pics/banner.jpg)
 - Frida是一个面向开发人员、逆向工程师和安全研究人员的动态插桩工具包。[官网：frida.re](https://github.com/frida/frida)
 - [Frida-Hooks]()则是在frida平台上集成了一些常用的脚本，从而使调试更加高效、易用。
 
@@ -30,111 +31,50 @@ Frida-Hooks
 ------------
 - Python 3.x 
 - frida-server
-  - 需将frida-server复制到手机 /data/local/tmp/ 下，并设置相应的可执行权限
+  - frida_server需要放在手机的 /data/local/tmp 目录下，且文件名为 frida_server
+  - frida_server需要具备执行权限
+  - 可以使用frida-hooks启动服务，命令如下： 
+  ```bash
+  $ frida-hooks --start_server
+  ```
 
 使用说明
 ------------
 - 查看帮助
 ```bash
-$ python .\frida_hook.py
+$ frida-hooks
 ```
-- 设置应用启动后立即挂起，然后注入钩子的模式
+- 通常启动时需要指定应用名称，如：
+  ```bash
+  $ frida-hooks com.xxx.foo
+  ```
+  - 可以使用"--search_app"查询应用名称，"--app"后面的参数可以名字的一部分，如：
+  ```bash
+  $ frida-hooks --search_app --app 宝
+  ```
+- 可以使用spawn模式启动，即设置应用启动后立即挂起，然后注入钩子的模式
     - 参数：  -S, --spawn         spawn mode of Frida, that suspend app during startup
-    ```base
-    $ python .\frida_hook.py com.xxx.foo -S --hook_class --class com.xxx.foo.community.mgr.CommunityMgr
+    ```bash
+    $ frida_hooks com.xxx.foo -S
     ```
-- 在手机上运行frida_server
-    - frida_server需要放在手机的 /data/local/tmp 目录下，且文件名为 frida_server
-    - frida_server需要具备执行权限
-    ```base
-    $ python .\frida_hook.py --start_server
+- 使用配置文件启动frida-hooks，这样可以记录跟踪挂载信息，方便持续进行分析
+    - 参数：   -c CONFIG, --config_file=CONFIG         load the options from the config file
+    ```bash
+    $ frida_hooks -c foo.ini
     ```
-- 停止运营frida_server
-    ```base
-    $ python .\frida_hook.py --stop_server
+- 进入frida-hooks后，回车可以看到内部命令帮助
+![在这里插入图片描述](https://github.com/softice70/frida-hooks/blob/main/pics/internalhelp.jpg)
+- 主要的分析功能可以通过run命令执行，如：
+    ```bash
+    > run --hook_func --class com.xxx.foo.community.mgr.CommunityMgr --func requestCommunitySearch
     ```
-- 查看frida_server的运行状态
-    ```base
-    $ python .\frida_hook.py --status_server
-    ```
-- 列出手机安装的所有应用
-```base
-$ python .\frida_hook.py --list_app
-```
-- 列出手机正在运行的所有应用
-```base
-$ python .\frida_hook.py --list_app_proc
-```
-- 列出某应用的全部线程信息
-```base
-$ python .\frida_hook.py com.xxx.foo --list_thread
-```
-- 列出某应用加载的所有的类
-```base
-$ python .\frida_hook.py com.xxx.foo --list_class
-```
-- 列出Activatiy类的列表
-```base
-$ python .\frida_hook.py com.xxx.foo --list_activaties
-```
-- 列出currentActivatiy类的列表
-```base
-$ python .\frida_hook.py com.xxx.foo --list_current_activity
-```
-- 列出services类的列表
-```base
-$ python .\frida_hook.py com.xxx.foo --list_services
-```
-- 列出BroadcastReceivers类的列表
-```base
-$ python .\frida_hook.py com.xxx.foo --list_broadcast_receivers
-```
-- hook某应用的某个类的全部方法
-```base
-$ python .\frida_hook.py com.xxx.foo --hook_class --class com.xxx.foo.community.mgr.CommunityMgr
-```
-- hook某应用的某个类的指定方法
-```base
-$ python .\frida_hook.py com.xxx.foo --hook_func --class com.xxx.foo.community.mgr.CommunityMgr --func requestCommunitySearch 
-```
-- 显示某应用的某个类的方法与成员变量的定义
-```base
-$ python .\frida_hook.py com.xxx.foo --dump --class com.xxx.foo.community.mgr.CommunityMgr
-```
-- 列出某应用加载的所有的so
-```base
-$ python .\frida_hook.py com.xxx.foo --list_so
-```
-- 列出某应用加载的某so的全部引出函数
-```base
-$ python .\frida_hook.py com.xxx.foo --list_so_func --module libbtime.so
-```
-- hook某应用的某so的指定函数
-```base
-$  python .\frida_hook.py com.xxx.foo --hook_so_func --module libxxx.so --func getSign 
-$  python .\frida_hook.py com.xxx.foo --hook_so_func --module libxxx.so --addr 0xe7576777 
-```
-- hook某应用的registerNatives函数
-```base
-$  python .\frida_hook.py com.xxx.foo --hook_RegisterNatives --suspend 
-```
-- hook某应用的okhttp3的通讯层
-```base
-$  python .\frida_hook.py com.xxx.foo --hook_okhttp3 
-```
-- 从内存中导出某应用的某so到指定文件
-```base
-$ python .\frida_hook.py com.xxx.foo --dump_so_to_file --module libxxx.so
-```
-- 从内存中导出某应用的dex文件
-```base
-$ python .\frida_hook.py com.xxx.foo --dump_dex
-$ python .\frida_hook.py com.xxx.foo --dump_dex --deep_search
-```
-- 显示内存中指定地址和长度的数据
-```base
-$ python .\frida_hook.py com.xxx.foo --dump_so_memory --module libxxx.so --offset 0 --length 64
-```
+- 可以通过内部命令"options"或者"o"查看内置的分析功能列表
+![在这里插入图片描述](https://github.com/softice70/frida-hooks/blob/main/pics/cmds.jpg)
+- 下面是部分命令的结果截图
+![在这里插入图片描述](https://github.com/softice70/frida-hooks/blob/main/pics/demo1.jpg)
+![在这里插入图片描述](https://github.com/softice70/frida-hooks/blob/main/pics/demo2.jpg)
+![在这里插入图片描述](https://github.com/softice70/frida-hooks/blob/main/pics/demo3.jpg)
+![在这里插入图片描述](https://github.com/softice70/frida-hooks/blob/main/pics/demo4.jpg)
 - 加载自定义脚本
     - 参考foo.py编写对应的jscode和on_message
     - 加载命令，以 foo.py 为例：
