@@ -105,6 +105,8 @@ $ frida-hooks
   ```bash
   $ frida_hooks com.xxx.foo -f foo 
   ``` 
+  - 使用"script"命令，方便排查脚本错误
+![在这里插入图片描述](https://github.com/softice70/frida-hooks/blob/main/pics/demo6.jpg)
 - 运行中可以用"list"命令列出已经加载的hook命令，并可以用"disable"和"enable"命令禁用或启用指定的命令
 ![在这里插入图片描述](https://github.com/softice70/frida-hooks/blob/main/pics/demo5.jpg)
   - "disable"和"enable"命令举例
