@@ -525,7 +525,7 @@ class Scriptor:
         for item in Scriptor._frida_cmds:
             if "api" in item.keys():
                 rpc_exports.append(f'    {item["api"]}: {item["func"]},')
-        export_script = '\n\nrpc.exports = {\n' + '\n'.join(rpc_exports) + '\n}\n\n'
+        export_script = 'rpc.exports = {\n' + '\n'.join(rpc_exports) + '\n}\n\n'
         return export_script + _script_core + script_str_ex
 
 

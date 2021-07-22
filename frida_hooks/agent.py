@@ -670,14 +670,14 @@ class FridaAgent:
         start_line = 0
         end_line = len(self._script_src) - 1
         if len(cmd) == 2 and is_number(cmd[1]):
-            line_no = int(cmd[1])
+            line_no = max(int(cmd[1]) - 1, 0)
             start_line = max(line_no - 10, 0)
             end_line = min(start_line + 21, len(self._script_src) - 1)
             start_line = max(end_line - 21, 0)
 
         for i in range(start_line, end_line + 1):
             if i == line_no:
-                print(f'{clr_yellow("==> ")}{clr_bright_cyan(str(i)):<20}{self._script_src[i]}')
+                print(f'{clr_yellow("==> ")}{clr_bright_cyan(str(i+1)):<20}{self._script_src[i]}')
             else:
-                print(f'    {clr_bright_cyan(str(i)):<20}{self._script_src[i]}')
+                print(f'    {clr_bright_cyan(str(i+1)):<20}{self._script_src[i]}')
 
