@@ -45,7 +45,7 @@ class FridaAgent:
         name = re.split('/', FridaAgent._frida_server_path)[-1]
         frida_server_pid = get_pid_by_adb_shell(FridaAgent._frida_server_path)
         if frida_server_pid > 0:
-            print(f'{name}[pid:{frida_server_pid}] is already running...')
+            print(f'{name}[pid:{clr_cyan(frida_server_pid)}] is already running...')
             return frida_server_pid
         else:
             FridaAgent.__start_frida_server()
@@ -53,7 +53,7 @@ class FridaAgent:
             if sid < 0:
                 print(f"error: frida server {FridaAgent._frida_server_path} failed to start")
             else:
-                print(f'{FridaAgent._frida_server_path}[pid:{sid}] is running...')
+                print(f'{FridaAgent._frida_server_path}[pid:{clr_cyan(sid)}] is running...')
             return sid
 
     @staticmethod
@@ -74,7 +74,15 @@ class FridaAgent:
         if frida_server_pid < 0:
             print(f'{name} is not running')
         else:
-            print(f'{name}[pid:{frida_server_pid}] is running...')
+            print(f'{name}[pid:{clr_cyan(frida_server_pid)}] is running...')
+
+    @staticmethod
+    def list_device():
+        devices = frida.get_device_manager().enumerate_devices()
+        print('List of devices attached:')
+        for device in devices:
+            if device.type == 'usb':
+                print(f'id: {clr_cyan(device.id)}\tname:{clr_yellow(device.name)}')
 
     def list_app(self, app_name=None, check_frida_server=True):
         if not check_frida_server or FridaAgent.start_frida_server() > 0:
@@ -105,7 +113,9 @@ class FridaAgent:
             (options, args) = self._parser.parse_args()
             if options.monochrome:
                 set_color_mode(False)
-            self._init_device()
+            if not self._init_device(device_id=options.device_id):
+                self.exit()
+                return
             if len(args) == 0 and not options.config:
                 self._exec_internal_cmd(options)
             elif len(args) > 1:
@@ -139,6 +149,8 @@ class FridaAgent:
                     self._dump_so(script)
                 elif script['cmd'] == 'list_app':
                     self.list_app(check_frida_server=False)
+                elif script['cmd'] == 'list_device':
+                    self.list_device()
                 elif script['cmd'] == 'list_process':
                     self.list_process(False)
                 elif script['cmd'] == 'search_app':
@@ -165,6 +177,8 @@ class FridaAgent:
         running_group = OptionGroup(parser, 'Running Options')
         running_group.add_option("-S", "--spawn", action="store_true", dest="is_suspend", default=False,
                                  help='spawn mode of Frida, that suspend app during startup')
+        running_group.add_option("-i", "--device_id", action="store", type="string", dest="device_id", default='',
+                                 help='attach the specified device')
         running_group.add_option("-m", "--monochrome", action="store_true", dest="monochrome", default=False,
                                  help='set to monochrome mode')
         running_group.add_option("-h", "--host", action="store", type="string", dest="host", default="127.0.0.1",
@@ -351,8 +365,8 @@ class FridaAgent:
         HttpHandler.set_agent(self)
         self._httpd = HTTPServer((self._host, self._port), HttpHandler)
         _thread.start_new_thread(lambda: self._httpd.serve_forever(), ())
-        print(f'http server[{self._host}:{self._port}] is running...')
-        print(f'rpc url: POST http://{self._host}:{self._port}/run')
+        print(f'http server[{clr_cyan(self._host + ":" + str(self._port))}] is running...')
+        print(f'rpc: {clr_yellow("POST")} {clr_cyan("http://" + self._host + ":" + str(self._port) + "/run")}')
 
     def _get_pid(self, name, wait_time_in_sec=1):
         for i in range(wait_time_in_sec):
@@ -406,7 +420,7 @@ class FridaAgent:
                 self._target_pid = self._get_process_id(self._app_package)
                 if self._target_pid > 0:
                     self._attach_app()
-                    print(f'{self._app_package}[pid:{self._target_pid}] is already running...')
+                    print(f'{self._app_package}[pid:{clr_cyan(self._target_pid)}] is already running...')
             if self._target_pid <= 0:
                 self._target_pid = self._start_app_by_package_name(self._app_package, is_suspend)
         return self._target_pid > 0
@@ -585,9 +599,20 @@ class FridaAgent:
         else:
             self._print_internal_cmd_help()
 
-    def _init_device(self):
-        self._device = frida.get_usb_device(timeout=15)
-        sys.path.append(os.getcwd())
+    def _init_device(self, device_id=''):
+        self._device = None
+        if device_id == '':
+            self._device = frida.get_usb_device(timeout=15)
+        else:
+            devices = frida.get_device_manager().enumerate_devices()
+            for device in devices:
+                if device.id == device_id and device.type == 'usb':
+                    self._device = device
+        if self._device:
+            print(f'device [{clr_cyan(self._device.id)}] connected.')
+        else:
+            print(clr_red(f'device ID[{device_id}] not found.'))
+        return self._device
 
     def _exec_internal_cmd(self, options):
         if options.start_server:
@@ -596,6 +621,8 @@ class FridaAgent:
             self.stop_frida_server()
         elif options.status_server:
             self.show_frida_server_status()
+        elif options.list_device:
+            self.list_device()
         elif options.list_app:
             self.list_app(check_frida_server=True)
         elif options.search_app:

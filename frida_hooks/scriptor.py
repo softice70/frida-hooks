@@ -12,6 +12,7 @@ from frida_hooks.colors import *
 
 class Scriptor:
     _original_frida_cmds = [
+        {'func': 'list_device', 'persistent': False, 'is_option': True, 'help': 'list the device'},
         {'func': 'list_app', 'persistent': False, 'is_option': True, 'help': 'list all installed applications'},
         {'func': 'list_process', 'persistent': False, 'is_option': True, 'help': 'list processes'},
         {'api': 'loadAllClass', 'func': 'load_all_class', 'persistent': False, 'is_option': True, 'help': 'load class'},
