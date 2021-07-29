@@ -30,7 +30,7 @@ def print_prompt():
     sys.stdout.write(f'\r> ')
 
 
-def exec_cmd(cmd, timeout_in_sec):
+def exec_cmd(cmd, timeout_in_sec, is_show_msg=True):
     p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE)
 
     def kill_process():
@@ -44,7 +44,7 @@ def exec_cmd(cmd, timeout_in_sec):
     ret, err = p.communicate()
     pRet = p.wait()
     timer.cancel()
-    if pRet != 0:
+    if pRet != 0 and is_show_msg:
         print(f'execute: "{cmd}" timeout')
     return ret
 
@@ -84,6 +84,18 @@ def get_pid_by_adb_shell(name, wait_time_in_sec=1):
             return pid
         time.sleep(1)
     return pid
+
+
+def get_app_version(name):
+    cmd = f'adb shell "dumpsys package {name} | grep versionName"'
+    ret = exec_cmd(cmd, 2, False)
+    if ret is None:
+        return "Unknown"
+    tokens = re.split('=', ret.decode("gbk", 'ignore').strip())
+    if len(tokens) == 2 and tokens[0] == 'versionName':
+        return tokens[1]
+    else:
+        return "Unknown"
 
 
 def write_log(text):

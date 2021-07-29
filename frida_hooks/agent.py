@@ -155,6 +155,8 @@ class FridaAgent:
                     self.list_process(False)
                 elif script['cmd'] == 'search_app':
                     self.list_app(app_name=script['params']['app'], check_frida_server=False)
+                elif script['cmd'] == 'app_version':
+                    self._show_version(script['params']['app'])
                 elif script['apiCmd'] != '':
                     ret = eval(script['apiCmd'])
             except Exception as e:
@@ -382,7 +384,6 @@ class FridaAgent:
         return -1
 
     def _start_app_by_package_name(self, package, is_suspend=False):
-        print(f'{package} is starting...')
         retry_times = 5
         for i in range(retry_times):
             self._target_pid = self._device.spawn(package)
@@ -392,7 +393,8 @@ class FridaAgent:
                 print("error: %s failed to start" % package)
                 break
             else:
-                print(f'{package}[pid:{self._target_pid}] is running...')
+                app_ver = get_app_version(self._app_package)
+                print(f'{package}[pid:{clr_cyan(self._target_pid)} version:{clr_cyan(app_ver)}] is running...')
                 if not is_suspend:
                     self._device.resume(self._target_pid)
                     self._is_app_suspend = False
@@ -420,7 +422,8 @@ class FridaAgent:
                 self._target_pid = self._get_process_id(self._app_package)
                 if self._target_pid > 0:
                     self._attach_app()
-                    print(f'{self._app_package}[pid:{clr_cyan(self._target_pid)}] is already running...')
+                    app_ver = get_app_version(self._app_package)
+                    print(f'{self._app_package}[pid:{clr_cyan(self._target_pid)} version:{clr_cyan(app_ver)}] is already running...')
             if self._target_pid <= 0:
                 self._target_pid = self._start_app_by_package_name(self._app_package, is_suspend)
         return self._target_pid > 0
@@ -627,6 +630,8 @@ class FridaAgent:
             self.list_app(check_frida_server=True)
         elif options.search_app:
             self.list_app(app_name=options.app_name, check_frida_server=True)
+        elif options.app_version:
+            self._show_version(options.app_name)
         elif options.list_process:
             self.list_process(check_frida_server=True)
         else:
@@ -707,4 +712,14 @@ class FridaAgent:
                 print(f'{clr_yellow("==> ")}{clr_bright_cyan(str(i+1)):<20}{self._script_src[i]}')
             else:
                 print(f'    {clr_bright_cyan(str(i+1)):<20}{self._script_src[i]}')
+
+    def _show_version(self, app_name):
+        if app_name and app_name != '':
+            app_ver = get_app_version(app_name)
+            print(f'app:{clr_cyan(app_name)} version:{clr_cyan(app_ver)}')
+        elif self._app_package:
+            app_ver = get_app_version(self._app_package)
+            print(f'app:{clr_cyan(self._app_package)} version:{clr_cyan(app_ver)}')
+        else:
+            print(Scriptor.get_cmd_usage('app_version'))
 

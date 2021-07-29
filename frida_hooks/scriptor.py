@@ -102,6 +102,9 @@ class Scriptor:
         {'api': 'searchInstance', 'func': 'search_instance', 'persistent': False, 'is_option': True,
          'help': 'search the instance of class',
          'params': [{"name": "class", "type": "string"}]},
+        {'func': 'app_version', 'persistent': False, 'is_option': True,
+         'help': 'show the version of specified app',
+         'params': [{"name": "app", "type": "string", "isOptional": True}]},
         {'api': 'searchInMemory', 'func': 'search_in_memory', 'persistent': False, 'is_option': False},
         {'api': 'memoryDump', 'func': 'memory_dump', 'persistent': False, 'is_option': False},
         {'api': 'scanDex', 'func': 'scan_dex', 'persistent': False, 'is_option': False},
@@ -290,6 +293,11 @@ class Scriptor:
         print_prompt()
 
     @staticmethod
+    def get_cmd_usage(cmd):
+        cmd_def = Scriptor._get_cmd_info(cmd)
+        return Scriptor._get_cmd_usage(cmd_def)
+
+    @staticmethod
     def _handle_one_message(msg_data):
         text_to_print = ''
         _underline = "_" * 20
@@ -457,7 +465,10 @@ class Scriptor:
             if options.file_script:
                 ret = 'custom'
         else:
-            ret = getattr(options, item)
+            try:
+                ret = getattr(options, item) if getattr(options, item) else default
+            except:
+                ret = default
         return ret
 
     @staticmethod
