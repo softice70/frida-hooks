@@ -53,6 +53,9 @@ const not_safe_classes = {
     "androidx.media.k$a": true,
 }
 
+const FLAG_ACTIVITY_NEW_TASK = 0x10000000;
+const ACTION_VIEW = "android.intent.action.VIEW";
+
 var dex_list = [];
 var native_list = [];
 
@@ -201,7 +204,7 @@ function get_arguments(arg_list, arg_cnt){
             fields = get_fields_ex(arg_list[idx_arg]);
         } catch (e) {
         }
-        args["arg" + idx_arg] = {class: class_name, value: '' + arg_list[idx_arg], fields: fields};
+        args[idx_arg] = {class: class_name, value: '' + arg_list[idx_arg], fields: fields};
     }
     return args;
 }
@@ -211,7 +214,7 @@ function get_arguments_for_so(arg_list, arg_cnt){
     let args = {};
     //获取参数
     for (var idx_arg = 0; idx_arg < arg_cnt; idx_arg++) {
-        args["arg" + idx_arg] = '' + arg_list[idx_arg];
+        args[idx_arg] = '' + arg_list[idx_arg];
     }
     return args;
 }
@@ -1257,4 +1260,48 @@ function hook_lib_art() {
 function list_register_natives(){
     send_msg(native_list);
     return native_list;
+}
+
+function open_scheme_url(url){
+    return wrap_java_perform(() => {
+        const context = get_application_context();
+        const AndroidIntent = Java.use("android.content.Intent");
+        const Uri = Java.use("android.net.Uri");
+        // Init and launch the intent
+        const new_intent = AndroidIntent.$new(ACTION_VIEW, Uri.parse(url));
+        // new_intent.setFlags(FLAG_ACTIVITY_NEW_TASK);
+
+        context.startActivity(new_intent);
+        console.log(clr_yellow("scheme: ") + clr_cyan(url) + clr_yellow(" successfully asked to open."));
+    });
+}
+
+/*
+* startActivity
+* Author: sensepost
+* HomePage: https://github.com/sensepost/objection
+* */
+function start_activity(activity_class){
+    // -- Sample Java
+    //
+    // Intent intent = new Intent(this, DisplayMessageActivity.class);
+    // intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+    //
+    // startActivity(intent);
+    return wrap_java_perform(() => {
+        const context = get_application_context();
+
+        // Setup a new Intent
+        const AndroidIntent = Java.use("android.content.Intent");
+
+        // Get the Activity class's .class
+        const NewActivity = Java.use(activity_class).class;
+
+        // Init and launch the intent
+        const new_intent = AndroidIntent.$new(context, NewActivity);
+        new_intent.setFlags(FLAG_ACTIVITY_NEW_TASK);
+
+        context.startActivity(new_intent);
+        console.log(clr_yellow("Activity:") + clr_cyan(activity_class) + clr_yellow(" successfully asked to start."));
+    });
 }

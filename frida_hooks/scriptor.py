@@ -10,6 +10,9 @@ from frida_hooks.utils import *
 from frida_hooks.colors import *
 
 
+class ArgumentsErrorException(Exception): pass
+
+
 class Scriptor:
     _original_frida_cmds = [
         {'func': 'list_device', 'persistent': False, 'is_option': True, 'help': 'list the device'},
@@ -102,6 +105,12 @@ class Scriptor:
         {'api': 'searchInstance', 'func': 'search_instance', 'persistent': False, 'is_option': True,
          'help': 'search the instance of class',
          'params': [{"name": "class", "type": "string"}]},
+        {'api': 'openSchemeUrl', 'func': 'open_scheme_url', 'persistent': False, 'is_option': True,
+         'help': 'open an activity by scheme url',
+         'params': [{"name": "url", "type": "string"}]},
+        {'api': 'startActivity', 'func': 'start_activity', 'persistent': False, 'is_option': True,
+         'help': 'start the specified Activity',
+         'params': [{"name": "activity", "type": "string"}]},
         {'func': 'app_version', 'persistent': False, 'is_option': True,
          'help': 'show the version of specified app',
          'params': [{"name": "app", "type": "string", "isOptional": True}]},
@@ -129,14 +138,9 @@ class Scriptor:
     ]
     _is_silence = False
     _show_detail = False
-    _app_package = None
 
     def __init__(self):
         pass
-
-    @staticmethod
-    def set_app_package(app_package):
-        Scriptor._app_package = app_package
 
     @staticmethod
     def set_silence(is_silence):
@@ -242,7 +246,16 @@ class Scriptor:
         return script
 
     @staticmethod
-    def gen_script_str(scripts_map):
+    def gen_script_str(*args):
+        if len(args) == 1:
+            return Scriptor._gen_script_str_by_map(args[0])
+        elif len(args) == 3:
+            return Scriptor._gen_script_str_by_params(args[0], args[1], args[2])
+        else:
+            raise ArgumentsErrorException('gen_script_str arguments error.')
+
+    @staticmethod
+    def _gen_script_str_by_map(scripts_map):
         fun_on_msg = Scriptor.on_message
         scripts_str_ex = ''
         rpc_defines = []
@@ -256,6 +269,12 @@ class Scriptor:
                     if scripts_map[key]['onMessage']:
                         fun_on_msg = scripts_map[key]['onMessage']
         scripts_str = Scriptor._merge_script(rpc_defines, scripts_str_ex)
+        return scripts_str, fun_on_msg
+
+    @staticmethod
+    def _gen_script_str_by_params(script_str, rpc_define, fun_on_msg):
+        fun_on_msg = fun_on_msg if fun_on_msg else Scriptor.on_message
+        scripts_str = Scriptor._merge_script(rpc_define, script_str)
         return scripts_str, fun_on_msg
 
     @staticmethod

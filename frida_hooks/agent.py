@@ -1,7 +1,6 @@
 #! /usr/bin/python
 # -*-coding: UTF-8 -*-
 
-import platform
 import configparser
 import os
 from os.path import abspath, dirname
@@ -20,7 +19,8 @@ md5 = lambda bs: hashlib.md5(bs).hexdigest()
 
 class FridaAgent:
     _frida_server_path = '/data/local/tmp/frida-server'
-    def __init__(self, parser):
+
+    def __init__(self, parser=None):
         self._parser = parser
         self._device = None
         self._session = None
@@ -34,86 +34,65 @@ class FridaAgent:
         self._init_parser(self._parser)
         self._enable_deep_search_for_dump_dex = False
         self._imp_mods = {}
+        self._is_start_httpd = (parser is not None)
         self._host = "127.0.0.1"
         self._port = 8989
         self._httpd = None
         self._fh_log = None
         pass
 
-    @staticmethod
-    def start_frida_server():
-        name = re.split('/', FridaAgent._frida_server_path)[-1]
-        frida_server_pid = get_pid_by_adb_shell(FridaAgent._frida_server_path)
-        if frida_server_pid > 0:
-            print(f'{name}[pid:{clr_cyan(frida_server_pid)}] is already running...')
-            return frida_server_pid
-        else:
-            FridaAgent.__start_frida_server()
-            sid = get_pid_by_adb_shell(FridaAgent._frida_server_path, 10)
-            if sid < 0:
-                print(f"error: frida server {FridaAgent._frida_server_path} failed to start")
-            else:
-                print(f'{FridaAgent._frida_server_path}[pid:{clr_cyan(sid)}] is running...')
-            return sid
+    def get_device_id(self):
+        return self._device.id if self._device else ''
 
-    @staticmethod
-    def stop_frida_server():
-        name = re.split('/', FridaAgent._frida_server_path)[-1]
-        frida_server_pid = get_pid_by_adb_shell(FridaAgent._frida_server_path)
-        if frida_server_pid < 0:
-            print(f'{name} is not running')
-        else:
-            cmd = "adb shell su -c 'kill -9 %d'" % frida_server_pid
-            exec_cmd(cmd, 10)
-            print(f'{name}[pid:{frida_server_pid}] is stop')
+    def load_script(self, scripts_str, fun_on_msg, wait_time_in_sec=10):
+        self._script_src = re.split('\n', scripts_str)
+        self._script = None
+        ret = False
+        self._script = self._session.create_script(scripts_str)
+        self._script.on("message", fun_on_msg)
+        for i in range(wait_time_in_sec):
+            try:
+                self._script.load()
+                if self._is_app_suspend:
+                    self._exec_script_in_spawn_mode()
+                    self._exec_script_cmd_after_load()
+                    self._device.resume(self._target_pid)
+                    self._is_app_suspend = False
+                else:
+                    self._exec_script_cmd_after_load()
+                ret = True
+                break
+            except Exception as e:
+                print(f'load:{e}')
+                time.sleep(1)
+                pass
+        self._script.exports.set_color_mode(get_color_mode())
+        self._scripts_map = Scriptor.clean_scripts_map(self._scripts_map)
+        return ret
 
-    @staticmethod
-    def show_frida_server_status(wait_time_in_sec=1):
-        name = re.split('/', FridaAgent._frida_server_path)[-1]
-        frida_server_pid = get_pid_by_adb_shell(FridaAgent._frida_server_path, wait_time_in_sec)
-        if frida_server_pid < 0:
-            print(f'{name} is not running')
-        else:
-            print(f'{name}[pid:{clr_cyan(frida_server_pid)}] is running...')
+    def unload_script(self):
+        if self._script and self._session:
+            self._script.unload()
 
-    @staticmethod
-    def list_device():
-        devices = frida.get_device_manager().enumerate_devices()
-        print('List of devices attached:')
-        for device in devices:
-            if device.type == 'usb':
-                print(f'id: {clr_cyan(device.id)}\tname:{clr_yellow(device.name)}')
-
-    def list_app(self, app_name=None, check_frida_server=True):
-        if not check_frida_server or FridaAgent.start_frida_server() > 0:
-            app_list = self._device.enumerate_applications()
-            app_list.sort(key=lambda s: s.identifier)
-            for item in app_list:
-                if not app_name or item.name.find(app_name) >= 0:
-                    print(f'{item.pid:<10}{clr_bright_cyan(item.identifier):<60}{clr_yellow(item.name)}')
-        else:
-            raise Exception()
-
-    def list_process(self, check_frida_server=True):
-        if not check_frida_server or FridaAgent.start_frida_server() > 0:
-            app_list = self._device.enumerate_applications()
-            app_dict = {}
-            for app in app_list:
-                app_dict[app.identifier] = app.name
-            proc_list = self._device.enumerate_processes()
-            proc_list.sort(key=lambda s: s.name)
-            for item in proc_list:
-                cn_name = app_dict[item.name] if item.name in app_dict.keys() else ''
-                print(f'{item.pid:<10}{clr_bright_cyan(item.name):<60}{clr_yellow(cn_name)}')
-        else:
-            raise Exception()
+    def start_app(self, app_name, is_suspend=False):
+        self._app_package = app_name
+        if self.start_frida_server() > 0:
+            if not is_suspend:
+                self._target_pid = self._get_process_id(self._app_package)
+                if self._target_pid > 0:
+                    self._attach_app()
+                    app_ver = get_app_version(self._device.id, self._app_package)
+                    print(f'{self._app_package}[pid:{clr_cyan(self._target_pid)} version:{clr_cyan(app_ver)}] is already running...')
+            if self._target_pid <= 0:
+                self._target_pid = self._start_app_by_package_name(self._app_package, is_suspend)
+        return self._target_pid > 0
 
     def run(self):
         try:
             (options, args) = self._parser.parse_args()
             if options.monochrome:
                 set_color_mode(False)
-            if not self._init_device(device_id=options.device_id):
+            if not self.init_device(device_id=options.device_id):
                 self.exit()
                 return
             if len(args) == 0 and not options.config:
@@ -128,13 +107,14 @@ class FridaAgent:
                     self._load_options(options)
                     self._keep_running = True
                 if self._keep_running:
-                    self._keep_running = self._start_app(is_suspend=options.is_suspend)
+                    self._keep_running = self.start_app(self._app_package, is_suspend=options.is_suspend)
                 self._start_http_server()
                 while self._keep_running:
-                    if not self._load_script():
+                    scripts_str, fun_on_msg = Scriptor.gen_script_str(self._scripts_map)
+                    if not self.load_script(scripts_str, fun_on_msg):
                         self._print_internal_cmd_help()
                     self._run_console()
-                    self._unload_script()
+                    self.unload_script()
         except Exception as e:
             print(f'run:{e}')
         self.exit()
@@ -170,43 +150,127 @@ class FridaAgent:
             self._session.detach()
         print(clr_bright_gray(clr_reverse('frida hooker exited.')))
 
+    def start_frida_server(self):
+        name = re.split('/', FridaAgent._frida_server_path)[-1]
+        frida_server_pid = get_pid_by_adb_shell(self._device.id, FridaAgent._frida_server_path)
+        if frida_server_pid > 0:
+            print(f'{name}[pid:{clr_cyan(frida_server_pid)}] is already running...')
+            return frida_server_pid
+        else:
+            self.__start_frida_server()
+            sid = get_pid_by_adb_shell(self._device.id, FridaAgent._frida_server_path, 10)
+            if sid < 0:
+                print(f"error: frida server {FridaAgent._frida_server_path} failed to start")
+            else:
+                print(f'{FridaAgent._frida_server_path}[pid:{clr_cyan(sid)}] is running...')
+            return sid
+
+    def stop_frida_server(self):
+        name = re.split('/', FridaAgent._frida_server_path)[-1]
+        frida_server_pid = get_pid_by_adb_shell(self._device.id, FridaAgent._frida_server_path)
+        if frida_server_pid < 0:
+            print(f'{name} is not running')
+        else:
+            cmd = f'adb -s {self._device.id} shell su -c "kill -9 {frida_server_pid}"'
+            exec_cmd(cmd, 10)
+            print(f'{name}[pid:{frida_server_pid}] is stop')
+
+    def show_frida_server_status(self, wait_time_in_sec=1):
+        name = re.split('/', FridaAgent._frida_server_path)[-1]
+        frida_server_pid = get_pid_by_adb_shell(self._device.id, FridaAgent._frida_server_path, wait_time_in_sec)
+        if frida_server_pid < 0:
+            print(f'{name} is not running')
+        else:
+            print(f'{name}[pid:{clr_cyan(frida_server_pid)}] is running...')
+
+    def get_app_version(self, app_name):
+        if app_name and app_name != '':
+            return get_app_version(self._device.id, app_name)
+        else:
+            return ''
+
+    @staticmethod
+    def list_device():
+        devices = frida.get_device_manager().enumerate_devices()
+        print('List of devices attached:')
+        for device in devices:
+            if device.type == 'usb':
+                print(f'id: {clr_cyan(device.id)}\tname:{clr_yellow(device.name)}')
+
+    def list_app(self, app_name=None, check_frida_server=True):
+        if not check_frida_server or self.start_frida_server() > 0:
+            app_list = self._device.enumerate_applications()
+            app_list.sort(key=lambda s: s.identifier)
+            for item in app_list:
+                if not app_name or item.name.find(app_name) >= 0 or item.identifier.find(app_name) >= 0:
+                    print(f'{item.pid:<10}{clr_bright_cyan(item.identifier):<60}{clr_yellow(item.name)}')
+        else:
+            raise Exception()
+
+    def find_app(self, app_name):
+        if app_name and app_name != '':
+            app_list = self._device.enumerate_applications()
+            for item in app_list:
+                if item.identifier == app_name:
+                    version = self.get_app_version(app_name)
+                    return {"pid": item.pid, "identifier": item.identifier, "name": item.name, "version": version}
+        return None
+
+    def list_process(self, check_frida_server=True):
+        if not check_frida_server or self.start_frida_server() > 0:
+            app_list = self._device.enumerate_applications()
+            app_dict = {}
+            for app in app_list:
+                app_dict[app.identifier] = app.name
+            proc_list = self._device.enumerate_processes()
+            proc_list.sort(key=lambda s: s.name)
+            for item in proc_list:
+                cn_name = app_dict[item.name] if item.name in app_dict.keys() else ''
+                print(f'{item.pid:<10}{clr_bright_cyan(item.name):<60}{clr_yellow(cn_name)}')
+        else:
+            raise Exception()
+
+    def get_rpc_exports(self):
+        return self._script.exports
+
     @staticmethod
     def _init_parser(parser):
-        parser.remove_option('-h')
-        Scriptor.add_cmd_options(parser)
-        Scriptor.add_param_options(parser)
+        if parser:
+            parser.remove_option('-h')
+            Scriptor.add_cmd_options(parser)
+            Scriptor.add_param_options(parser)
 
-        running_group = OptionGroup(parser, 'Running Options')
-        running_group.add_option("-S", "--spawn", action="store_true", dest="is_suspend", default=False,
-                                 help='spawn mode of Frida, that suspend app during startup')
-        running_group.add_option("-i", "--device_id", action="store", type="string", dest="device_id", default='',
-                                 help='attach the specified device')
-        running_group.add_option("-m", "--monochrome", action="store_true", dest="monochrome", default=False,
-                                 help='set to monochrome mode')
-        running_group.add_option("-h", "--host", action="store", type="string", dest="host", default="127.0.0.1",
-                                 help='the ip of http server, default: 127.0.0.1')
-        running_group.add_option("-p", "--port", action="store", type="int", dest="port", default=8989,
-                                 help='the port of http server, default: 8989')
-        running_group.add_option("", "--silence", action="store_true", dest="silence", default=False,
-                                 help='no message is output to screen')
-        running_group.add_option("-d", "--show_detail", action="store_true", dest="show_detail", default=True,
-                                 help='show and log the detail infomation')
-        running_group.add_option("-f", "--script_file", action="store", type="string", dest="file_script",
-                                 help='set the script file include on_message')
-        running_group.add_option("-c", "--config_file", action="store", type="string", dest="config",
-                                 help='load the options from the config file')
-        running_group.add_option("-o", "--log_file", action="store", type="string", dest="log_file", default='',
-                                 help='set log file')
-        parser.add_option_group(running_group)
+            running_group = OptionGroup(parser, 'Running Options')
+            running_group.add_option("-S", "--spawn", action="store_true", dest="is_suspend", default=False,
+                                     help='spawn mode of Frida, that suspend app during startup')
+            running_group.add_option("-i", "--device_id", action="store", type="string", dest="device_id", default='',
+                                     help='attach the specified device')
+            running_group.add_option("-m", "--monochrome", action="store_true", dest="monochrome", default=False,
+                                     help='set to monochrome mode')
+            running_group.add_option("-h", "--host", action="store", type="string", dest="host", default="127.0.0.1",
+                                     help='the ip of http server, default: 127.0.0.1')
+            running_group.add_option("-p", "--port", action="store", type="int", dest="port", default=8989,
+                                     help='the port of http server, default: 8989')
+            running_group.add_option("", "--silence", action="store_true", dest="silence", default=False,
+                                     help='no message is output to screen')
+            running_group.add_option("-d", "--show_detail", action="store_true", dest="show_detail", default=True,
+                                     help='show and log the detail infomation')
+            running_group.add_option("-f", "--script_file", action="store", type="string", dest="file_script",
+                                     help='set the script file include on_message')
+            running_group.add_option("-c", "--config_file", action="store", type="string", dest="config",
+                                     help='load the options from the config file')
+            running_group.add_option("-o", "--log_file", action="store", type="string", dest="log_file", default='',
+                                     help='set log file')
+            parser.add_option_group(running_group)
 
-        svr_group = OptionGroup(parser, 'Frida server Options')
-        svr_group.add_option("", "--start_server", action="store_true", dest="start_server", default=False,
-                             help='start the frida server')
-        svr_group.add_option("", "--stop_server", action="store_true", dest="stop_server", default=False,
-                             help='stop the frida server')
-        svr_group.add_option("", "--status_server", action="store_true", dest="status_server", default=False,
-                             help='get the status of frida server')
-        parser.add_option_group(svr_group)
+            svr_group = OptionGroup(parser, 'Frida server Options')
+            svr_group.add_option("", "--start_server", action="store_true", dest="start_server", default=False,
+                                 help='start the frida server')
+            svr_group.add_option("", "--stop_server", action="store_true", dest="stop_server", default=False,
+                                 help='stop the frida server')
+            svr_group.add_option("", "--status_server", action="store_true", dest="status_server", default=False,
+                                 help='get the status of frida server')
+            parser.add_option_group(svr_group)
 
     @staticmethod
     def _print_internal_cmd_help():
@@ -229,19 +293,17 @@ class FridaAgent:
         ]
         print("".join(help_strs))
 
-    @staticmethod
-    def __start_frida_server():
+    def __start_frida_server(self):
+        print(f'{FridaAgent._frida_server_path} is starting...')
+
         def kill_process():
             try:
                 p.kill()
             except OSError:
                 pass  # Swallow the error
 
-        print(f'{FridaAgent._frida_server_path} is starting...')
-        cmd = "adb shell su"
-        sub_cmd = FridaAgent._frida_server_path + " &\n"
-        p = subprocess.Popen(cmd, shell=True, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
-        p.stdin.write(sub_cmd.encode())
+        cmd = f'adb -s {self._device.id} shell su -c "{FridaAgent._frida_server_path} &"'
+        p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE)
         timer = Timer(3, kill_process)
         timer.start()
         p.wait()
@@ -315,7 +377,6 @@ class FridaAgent:
                 self._open_logger(log_file)
                 if not self._app_package or self._app_package == app_package:
                     self._app_package = app_package
-                    Scriptor.set_app_package(self._app_package)
                     configs = re.split(',', cf.get("main", "load_configs"))
                     for item in configs:
                         script = Scriptor.prepare_script({'cf': cf, 'section': item}, self._imp_mods)
@@ -339,7 +400,6 @@ class FridaAgent:
         self._port = options.port
         Scriptor.set_silence(options.silence)
         Scriptor.set_show_detail(options.show_detail)
-        Scriptor.set_app_package(self._app_package)
         script = Scriptor.prepare_script(options, self._imp_mods)
         if script:
             self._scripts_map[script['key']] = script
@@ -386,21 +446,22 @@ class FridaAgent:
     def _start_app_by_package_name(self, package, is_suspend=False):
         retry_times = 5
         for i in range(retry_times):
-            self._target_pid = self._device.spawn(package)
+            self._target_pid = self._device.spawn(package) if is_suspend else self._start_app_by_monkey(package)
             time.sleep(i)
             self._is_app_suspend = True
-            if self._target_pid < 0:
-                print("error: %s failed to start" % package)
-                break
-            else:
-                app_ver = get_app_version(self._app_package)
+            if self._target_pid > 0:
+                app_ver = get_app_version(self._device.id, self._app_package)
                 print(f'{package}[pid:{clr_cyan(self._target_pid)} version:{clr_cyan(app_ver)}] is running...')
                 if not is_suspend:
-                    self._device.resume(self._target_pid)
                     self._is_app_suspend = False
                 if self._attach_app():
                     break
         return self._target_pid
+
+    def _start_app_by_monkey(self, package):
+        cmd = f"adb -s {self._device.id} shell monkey -p {package} -c android.intent.category.LAUNCHER 1"
+        exec_cmd(cmd, 10)
+        return self._get_process_id(package)
 
     def _attach_app(self):
         if self._target_pid > 0:
@@ -415,18 +476,6 @@ class FridaAgent:
                 pass
         self._target_pid = -1
         return False
-
-    def _start_app(self, is_suspend=False):
-        if self.start_frida_server() > 0:
-            if not is_suspend:
-                self._target_pid = self._get_process_id(self._app_package)
-                if self._target_pid > 0:
-                    self._attach_app()
-                    app_ver = get_app_version(self._app_package)
-                    print(f'{self._app_package}[pid:{clr_cyan(self._target_pid)} version:{clr_cyan(app_ver)}] is already running...')
-            if self._target_pid <= 0:
-                self._target_pid = self._start_app_by_package_name(self._app_package, is_suspend)
-        return self._target_pid > 0
 
     def _is_app_running(self):
         pid = self._get_process_id(self._app_package)
@@ -492,37 +541,6 @@ class FridaAgent:
         else:
             self._print_internal_cmd_help()
         return ret
-
-    def _load_script(self, wait_time_in_sec=10):
-        scripts_str, fun_on_msg = Scriptor.gen_script_str(self._scripts_map)
-        self._script_src = re.split('\n', scripts_str)
-        self._script = None
-        ret = False
-        self._script = self._session.create_script(scripts_str)
-        self._script.on("message", fun_on_msg)
-        for i in range(wait_time_in_sec):
-            try:
-                self._script.load()
-                if self._is_app_suspend:
-                    self._exec_script_in_spawn_mode()
-                    self._exec_script_cmd_after_load()
-                    self._device.resume(self._target_pid)
-                    self._is_app_suspend = False
-                else:
-                    self._exec_script_cmd_after_load()
-                ret = True
-                break
-            except Exception as e:
-                print(f'load:{e}')
-                time.sleep(1)
-                pass
-        self._script.exports.set_color_mode(get_color_mode())
-        self._scripts_map = Scriptor.clean_scripts_map(self._scripts_map)
-        return ret
-
-    def _unload_script(self):
-        if self._script and self._session:
-            self._script.unload()
 
     def _exec_script_cmd_after_load(self):
         for key in self._scripts_map.keys():
@@ -602,7 +620,7 @@ class FridaAgent:
         else:
             self._print_internal_cmd_help()
 
-    def _init_device(self, device_id=''):
+    def init_device(self, device_id=''):
         self._device = None
         if device_id == '':
             self._device = frida.get_usb_device(timeout=15)
@@ -611,8 +629,10 @@ class FridaAgent:
             for device in devices:
                 if device.id == device_id and device.type == 'usb':
                     self._device = device
+                    break
         if self._device:
             print(f'device [{clr_cyan(self._device.id)}] connected.')
+            sys.path.append(os.getcwd())
         else:
             print(clr_red(f'device ID[{device_id}] not found.'))
         return self._device
@@ -715,10 +735,10 @@ class FridaAgent:
 
     def _show_version(self, app_name):
         if app_name and app_name != '':
-            app_ver = get_app_version(app_name)
+            app_ver = get_app_version(self._device.id, app_name)
             print(f'app:{clr_cyan(app_name)} version:{clr_cyan(app_ver)}')
         elif self._app_package:
-            app_ver = get_app_version(self._app_package)
+            app_ver = get_app_version(self._device.id, self._app_package)
             print(f'app:{clr_cyan(self._app_package)} version:{clr_cyan(app_ver)}')
         else:
             print(Scriptor.get_cmd_usage('app_version'))

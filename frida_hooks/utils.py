@@ -3,6 +3,7 @@
 
 
 import sys
+import platform
 import subprocess
 from threading import Timer
 import re
@@ -46,6 +47,8 @@ def exec_cmd(cmd, timeout_in_sec, is_show_msg=True):
     timer.cancel()
     if pRet != 0 and is_show_msg:
         print(f'execute: "{cmd}" timeout')
+    console_code_page = "gbk" if platform.system().lower() == 'windows' else "utf-8"
+    ret = ret.decode(console_code_page, "ignore") if ret else ret
     return ret
 
 
@@ -58,7 +61,7 @@ def is_number(s):
 
 
 def __get_pid_in_text(text, pname):
-    lines = re.split('\r\n', text.decode("gbk", 'ignore'))
+    lines = re.split('\r\n', text)
     for line in lines:
         tokens = re.split(' ', line)
         filtered_tokens = []
@@ -70,10 +73,10 @@ def __get_pid_in_text(text, pname):
     return -1
 
 
-def get_pid_by_adb_shell(name, wait_time_in_sec=1):
+def get_pid_by_adb_shell(device_id, name, wait_time_in_sec=1):
     pid = -1
     for i in range(wait_time_in_sec):
-        cmd = "adb shell ps"
+        cmd = f"adb -s {device_id} shell ps"
         ret = exec_cmd(cmd, 2)
         if ret is None:
             print("请重新拔插手机上的usb线")
@@ -86,16 +89,16 @@ def get_pid_by_adb_shell(name, wait_time_in_sec=1):
     return pid
 
 
-def get_app_version(name):
-    cmd = f'adb shell "dumpsys package {name} | grep versionName"'
+def get_app_version(device_id, name):
+    cmd = f'adb -s {device_id} shell "dumpsys package {name} | grep versionName"'
     ret = exec_cmd(cmd, 2, False)
     if ret is None:
-        return "Unknown"
-    tokens = re.split('=', ret.decode("gbk", 'ignore').strip())
+        return ""
+    tokens = re.split('=', ret.strip())
     if len(tokens) == 2 and tokens[0] == 'versionName':
         return tokens[1]
     else:
-        return "Unknown"
+        return ""
 
 
 def write_log(text):
