@@ -8,7 +8,7 @@
 from setuptools import setup, find_packages
 
 setup(name = "frida-hooks",
-    version = "0.9.12",
+    version = "0.9.11",
     description = "Dynamic instrumentation toolkits powered by Frida",
     author = "Ryan",
     author_email = "dawnsun@sina.com",

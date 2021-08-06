@@ -78,16 +78,9 @@ class FridaAgent:
     def start_app(self, app_name, is_suspend=False):
         self._app_package = app_name
         if self.start_frida_server() > 0:
+            self._app_package, pid = self._confirm_package_pid(app_name)
             if not is_suspend:
-                if is_number(app_name):
-                    self._app_package = self._get_process_name(int(app_name))
-                    if self._app_package is None:
-                        print(clr_red(f'invalid pid: {app_name}'))
-                        return False
-                    else:
-                        self._target_pid = int(app_name)
-                else:
-                    self._target_pid = self._get_process_id(self._app_package)
+                self._target_pid = pid
                 if self._target_pid > 0:
                     if self._attach_app():
                         app_ver = get_app_version(self._device.id, self._app_package)
@@ -210,21 +203,27 @@ class FridaAgent:
         if not check_frida_server or self.start_frida_server() > 0:
             app_list = self._device.enumerate_applications()
             app_list.sort(key=lambda s: s.identifier)
-            for item in app_list:
-                if not app_name or item.name.find(app_name) >= 0 or item.identifier.find(app_name) >= 0:
-                    if item.pid > 0:
-                        print(f'{clr_yellow(item.pid):<21}{clr_bright_cyan(item.identifier):<60}{clr_yellow(item.name)}')
-                    else:
-                        print(f'{item.pid:<10}{clr_bright_cyan(item.identifier):<60}{clr_purple(item.name)}')
+            if not app_name:
+                matching = app_list
+            else:
+                app_lc = app_name.lower()
+                matching = [proc for proc in app_list
+                            if proc.name.lower().find(app_lc) >= 0 or proc.identifier.find(app_name) >= 0]
+            for item in matching:
+                if item.pid > 0:
+                    print(f'{clr_yellow(item.pid):<21}{clr_bright_cyan(item.identifier):<60}{clr_yellow(item.name)}')
+                else:
+                    print(f'{item.pid:<10}{clr_bright_cyan(item.identifier):<60}{clr_purple(item.name)}')
         else:
             raise Exception()
 
-    def find_app(self, app_name):
-        if app_name and app_name != '':
+    def find_app(self, app):
+        if app and app != '':
+            app_lc = app.lower()
             matching = [proc for proc in self._device.enumerate_applications()
-                        if fnmatch.fnmatchcase(proc.identifier, app_name)]
+                        if fnmatch.fnmatchcase(proc.identifier, app) or fnmatch.fnmatchcase(proc.name.lower(), app_lc)]
             if len(matching) == 1:
-                version = self.get_app_version(app_name)
+                version = self.get_app_version(matching[0].identifier)
                 return {"pid": matching[0].pid, "identifier": matching[0].identifier, "name": matching[0].name, "version": version}
         return None
 
@@ -439,18 +438,21 @@ class FridaAgent:
         print(f'rpc: {clr_yellow("POST")} {clr_cyan("http://" + self._host + ":" + str(self._port) + "/run")}')
 
     def _start_app_by_package_name(self, package, is_suspend=False):
-        retry_times = 5
-        for i in range(retry_times):
-            self._target_pid = self._device.spawn(package) if is_suspend else self._start_app_by_monkey(package)
-            time.sleep(i)
-            self._is_app_suspend = True
-            if self._target_pid > 0:
-                app_ver = get_app_version(self._device.id, self._app_package)
-                print(f'{package}[pid:{clr_cyan(self._target_pid)} version:{clr_cyan(app_ver)}] is running...')
-                if not is_suspend:
-                    self._is_app_suspend = False
-                if self._attach_app():
-                    break
+        if package is None or package == '':
+            self._target_pid = -1
+        else:
+            retry_times = 5
+            for i in range(retry_times):
+                self._target_pid = self._device.spawn(package) if is_suspend else self._start_app_by_monkey(package)
+                time.sleep(i)
+                self._is_app_suspend = True
+                if self._target_pid > 0:
+                    app_ver = get_app_version(self._device.id, self._app_package)
+                    print(f'{package}[pid:{clr_cyan(self._target_pid)} version:{clr_cyan(app_ver)}] is running...')
+                    if not is_suspend:
+                        self._is_app_suspend = False
+                    if self._attach_app():
+                        break
         return self._target_pid
 
     def _start_app_by_monkey(self, package):
@@ -651,6 +653,20 @@ class FridaAgent:
             self.list_process(check_frida_server=True)
         else:
             self._parser.print_help()
+
+    def _confirm_package_pid(self, app):
+        app_list = self._device.enumerate_applications()
+        if is_number(app):
+            pid = int(app)
+            matching = [proc for proc in app_list if proc.pid == pid]
+        else:
+            app_lc = app.lower()
+            matching = [proc for proc in app_list if fnmatch.fnmatchcase(proc.identifier, app) or fnmatch.fnmatchcase(proc.name.lower(), app_lc)]
+        if len(matching) == 1:
+            return matching[0].identifier, matching[0].pid
+        else:
+            print(clr_red(f'app: \"{app}\" not found!'))
+            return None, -1
 
     def _get_process_id(self, app):
         matching = [proc for proc in self._device.enumerate_applications() if fnmatch.fnmatchcase(proc.identifier, app)]

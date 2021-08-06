@@ -31,7 +31,7 @@ def print_prompt():
     sys.stdout.write(f'\r> ')
 
 
-def exec_cmd(cmd, timeout_in_sec, is_show_msg=True):
+def exec_cmd(cmd, timeout_in_sec=0, is_show_msg=True):
     p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE)
 
     def kill_process():
@@ -40,11 +40,13 @@ def exec_cmd(cmd, timeout_in_sec, is_show_msg=True):
         except OSError:
             pass  # Swallow the error
 
-    timer = Timer(timeout_in_sec, kill_process)
-    timer.start()
+    if timeout_in_sec > 0:
+        timer = Timer(timeout_in_sec, kill_process)
+        timer.start()
     ret, err = p.communicate()
     pRet = p.wait()
-    timer.cancel()
+    if timeout_in_sec > 0:
+        timer.cancel()
     if pRet != 0 and is_show_msg:
         print(f'execute: "{cmd}" timeout')
     console_code_page = "gbk" if platform.system().lower() == 'windows' else "utf-8"

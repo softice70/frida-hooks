@@ -52,7 +52,7 @@ def main():
     global agent
     click.secho(banner, fg='bright_green')
     # 命令行解析
-    usage = 'usage: %program [options] [pid|package]'
+    usage = 'usage: %program [options] [pid|package|app_name]'
     parser = optparse.OptionParser(usage, version="%program 0.9.0")
 
     signal.signal(signal.SIGINT, on_exit)
