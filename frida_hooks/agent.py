@@ -8,6 +8,7 @@ from optparse import OptionGroup
 import frida
 import hashlib
 import _thread
+import fnmatch
 from http.server import HTTPServer
 from frida_hooks.scriptor import Scriptor
 from frida_hooks.utils import *
@@ -78,11 +79,19 @@ class FridaAgent:
         self._app_package = app_name
         if self.start_frida_server() > 0:
             if not is_suspend:
-                self._target_pid = self._get_process_id(self._app_package)
+                if is_number(app_name):
+                    self._app_package = self._get_process_name(int(app_name))
+                    if self._app_package is None:
+                        print(clr_red(f'invalid pid: {app_name}'))
+                        return False
+                    else:
+                        self._target_pid = int(app_name)
+                else:
+                    self._target_pid = self._get_process_id(self._app_package)
                 if self._target_pid > 0:
-                    self._attach_app()
-                    app_ver = get_app_version(self._device.id, self._app_package)
-                    print(f'{self._app_package}[pid:{clr_cyan(self._target_pid)} version:{clr_cyan(app_ver)}] is already running...')
+                    if self._attach_app():
+                        app_ver = get_app_version(self._device.id, self._app_package)
+                        print(f'{self._app_package}[pid:{clr_cyan(self._target_pid)} version:{clr_cyan(app_ver)}] is already running...')
             if self._target_pid <= 0:
                 self._target_pid = self._start_app_by_package_name(self._app_package, is_suspend)
         return self._target_pid > 0
@@ -203,30 +212,29 @@ class FridaAgent:
             app_list.sort(key=lambda s: s.identifier)
             for item in app_list:
                 if not app_name or item.name.find(app_name) >= 0 or item.identifier.find(app_name) >= 0:
-                    print(f'{item.pid:<10}{clr_bright_cyan(item.identifier):<60}{clr_yellow(item.name)}')
+                    if item.pid > 0:
+                        print(f'{clr_yellow(item.pid):<21}{clr_bright_cyan(item.identifier):<60}{clr_yellow(item.name)}')
+                    else:
+                        print(f'{item.pid:<10}{clr_bright_cyan(item.identifier):<60}{clr_purple(item.name)}')
         else:
             raise Exception()
 
     def find_app(self, app_name):
         if app_name and app_name != '':
-            app_list = self._device.enumerate_applications()
-            for item in app_list:
-                if item.identifier == app_name:
-                    version = self.get_app_version(app_name)
-                    return {"pid": item.pid, "identifier": item.identifier, "name": item.name, "version": version}
+            matching = [proc for proc in self._device.enumerate_applications()
+                        if fnmatch.fnmatchcase(proc.identifier, app_name)]
+            if len(matching) == 1:
+                version = self.get_app_version(app_name)
+                return {"pid": matching[0].pid, "identifier": matching[0].identifier, "name": matching[0].name, "version": version}
         return None
 
     def list_process(self, check_frida_server=True):
         if not check_frida_server or self.start_frida_server() > 0:
-            app_list = self._device.enumerate_applications()
-            app_dict = {}
-            for app in app_list:
-                app_dict[app.identifier] = app.name
-            proc_list = self._device.enumerate_processes()
-            proc_list.sort(key=lambda s: s.name)
-            for item in proc_list:
-                cn_name = app_dict[item.name] if item.name in app_dict.keys() else ''
-                print(f'{item.pid:<10}{clr_bright_cyan(item.name):<60}{clr_yellow(cn_name)}')
+            proc_list = self._device.enumerate_applications()
+            proc_list.sort(key=lambda s: s.identifier)
+            for proc in proc_list:
+                if proc.pid > 0:
+                    print(f'{proc.pid:<10}{clr_bright_cyan(proc.identifier):<60}{clr_yellow(proc.name)}')
         else:
             raise Exception()
 
@@ -429,19 +437,6 @@ class FridaAgent:
         _thread.start_new_thread(lambda: self._httpd.serve_forever(), ())
         print(f'http server[{clr_cyan(self._host + ":" + str(self._port))}] is running...')
         print(f'rpc: {clr_yellow("POST")} {clr_cyan("http://" + self._host + ":" + str(self._port) + "/run")}')
-
-    def _get_pid(self, name, wait_time_in_sec=1):
-        for i in range(wait_time_in_sec):
-            try:
-                proc_list = self._device.enumerate_processes()
-                for proc in proc_list:
-                    if proc.name == name:
-                        return proc.pid
-            except Exception as e:
-                print(e)
-                return -1
-            time.sleep(1)
-        return -1
 
     def _start_app_by_package_name(self, package, is_suspend=False):
         retry_times = 5
@@ -658,13 +653,12 @@ class FridaAgent:
             self._parser.print_help()
 
     def _get_process_id(self, app):
-        pid = -1
-        try:
-            app_proc = self._device.get_process(app)
-            pid = app_proc.pid
-        except Exception as e:
-            pass
-        return pid
+        matching = [proc for proc in self._device.enumerate_applications() if fnmatch.fnmatchcase(proc.identifier, app)]
+        return matching[0].pid if len(matching) == 1 else -1
+
+    def _get_process_name(self, pid):
+        matching = [proc for proc in self._device.enumerate_applications() if fnmatch.fnmatchcase(proc.pid, pid)]
+        return matching[0].identifier if len(matching) == 1 else None
 
     def _dump_so(self, script):
         module_name = script['params']['module']
