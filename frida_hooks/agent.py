@@ -111,6 +111,7 @@ class FridaAgent:
                 if self._keep_running:
                     self._keep_running = self.start_app(self._app_package, is_suspend=options.is_suspend)
                 self._start_http_server()
+                self._print_internal_cmd_help()
                 while self._keep_running:
                     scripts_str, fun_on_msg = Scriptor.gen_script_str(self._scripts_map)
                     if not self.load_script(scripts_str, fun_on_msg):
@@ -198,6 +199,7 @@ class FridaAgent:
         for device in devices:
             if device.type == 'usb':
                 print(f'id: {clr_cyan(device.id)}\tname:{clr_yellow(device.name)}')
+        return devices
 
     def list_app(self, app_name=None, check_frida_server=True):
         if not check_frida_server or self.start_frida_server() > 0:
@@ -238,7 +240,7 @@ class FridaAgent:
             raise Exception()
 
     def get_rpc_exports(self):
-        return self._script.exports
+        return self._script.exports if self._script else None
 
     @staticmethod
     def _init_parser(parser):

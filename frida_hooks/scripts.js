@@ -98,6 +98,23 @@ function java_use_safe(class_name){
     return cls;
 }
 
+function get_real_class_name(object) {
+    const objClass = Java.use("java.lang.Object").getClass.apply(object);
+    return Java.use("java.lang.Class").getName.apply(objClass)
+}
+
+function is_instance_of(object, className){
+    let result = false;
+    try {
+        const targetClass = Java.use(className);
+        const newObject = Java.cast(object, targetClass);
+        result = !!newObject;
+    } catch (e) {
+        result = false;
+    }
+    return result;
+};
+
 function get_methods_safe(class_name){
     let methods = [];
     try{
@@ -130,24 +147,41 @@ function trim(str, is_global){
     return result;
 }
 
-//获取字段信息
-function get_fields(_this, field_array){
-    let fields = {};
-    for (var i = 0; i < field_array.length; i++){
-        let field = field_array[i]; //当前成员
-        field.setAccessible(true);
-        let field_name = field.getName();
-        let class_name = field.getType().getName();
-        let field_val = 'UNKNOWN'
-        try {
-            let field_val_obj = field.get(_this);
-            field_val = field_val_obj == null? field_val_obj: field_val_obj.toString();
-        }
-        catch(err){
-        }
-        fields[field_name] = {class: class_name, value: field_val};
+function dump_object(_this){
+    let class_name = get_real_class_name(_this);
+    let fields = get_fields(_this);
+    send({type:"fields", before:JSON.stringify(fields), class:class_name});
+}
+
+function has_own_property(obj, name) {
+    try {
+        return obj.hasOwnProperty(name) || name in obj;
+    } catch (e) {
+        return false;
     }
-    return fields;
+}
+
+function get_own_property(obj, name) {
+    if (!has_own_property(obj, name)) {
+        return null;
+    }
+    let result = null;
+    try {
+        result = obj[name];
+        if (result) {
+            return result
+        }
+    } catch (e) {
+    }
+
+    try {
+        result = obj.getOwnProperty(name);
+        if (result) {
+            return result;
+        }
+    } catch (e) {
+    }
+    return result
 }
 
 function get_class_safe(_this){
@@ -159,7 +193,7 @@ function get_class_safe(_this){
 }
 
 //获取字段信息
-function get_fields_ex(_this){
+function get_fields(_this){
     let fields = {};
     var cls = null;
     try {
@@ -168,7 +202,7 @@ function get_fields_ex(_this){
     }
 
     while (cls !== null && !cls.equals(Java.use("java.lang.Object").class)) {
-        var class_name = cls.getName();
+        var class_name = get_real_class_name(_this);
         var field_array = cls.getDeclaredFields();
         for (var i = 0; i < field_array.length; i++){
             let field = field_array[i]; //当前成员
@@ -191,7 +225,6 @@ function get_fields_ex(_this){
     return fields;
 }
 
-
 //获取参数
 function get_arguments(arg_list, arg_cnt){
     let args = {};
@@ -200,8 +233,8 @@ function get_arguments(arg_list, arg_cnt){
         var class_name = '';
         var fields = {};
         try {
-            class_name = arg_list[idx_arg].getClass();
-            fields = get_fields_ex(arg_list[idx_arg]);
+            class_name = get_real_class_name(arg_list[idx_arg]);
+            fields = get_fields(arg_list[idx_arg]);
         } catch (e) {
         }
         args[idx_arg] = {class: class_name, value: '' + arg_list[idx_arg], fields: fields};
@@ -222,6 +255,78 @@ function get_arguments_for_so(arg_list, arg_cnt){
 //获取调用栈
 function get_stack_trace(){
     return Java.use("java.lang.Thread").currentThread().getStackTrace().toString();
+}
+
+function probe_obj_method(_this, cls){
+    let class_name = trim(cls.toString().replace(/(class|interface)/g, ''));
+    let method_array = get_methods_safe(class_name);
+    let ret_values = [];
+    for (let i = 0; i < method_array.length; i++) {
+        let cur_method = method_array[i]; //当前方法
+        let str_method_name = cur_method.getName(); //当前方法名
+        let str_ret_type = '' + cur_method.getReturnType();
+        str_ret_type = trim(str_ret_type.replace(/(class|interface)/g, ''));
+        let str_param_types = trim('' + cur_method.getParameterTypes());
+        if(str_param_types == '' && str_ret_type != 'java.lang.Object'
+                && str_ret_type != 'boolean' && str_ret_type.indexOf('$') < 0
+                && str_method_name != 'toString'){
+            try{
+                let ret = '' + eval('_this.' + str_method_name + '()');
+                ret_values.push({method: str_method_name, ret: ret});
+            } catch (e) {
+            }
+        }
+    }
+    return ret_values;
+}
+
+function open_scheme_url(url){
+    return wrap_java_perform(() => {
+        const context = get_application_context();
+        const AndroidIntent = Java.use("android.content.Intent");
+        const Uri = Java.use("android.net.Uri");
+        // Init and launch the intent
+        const new_intent = AndroidIntent.$new(ACTION_VIEW, Uri.parse(url));
+        // new_intent.setFlags(FLAG_ACTIVITY_NEW_TASK);
+
+        context.startActivity(new_intent);
+        console.log(clr_yellow("scheme: ") + clr_cyan(url) + clr_yellow(" successfully asked to open."));
+    });
+}
+
+function dump_map(map_obj){
+    let result = {};
+    try {
+        const MapClass = Java.use("java.util.Map");
+        const EntryClass = Java.use("java.util.Map$Entry");
+        const entry_set = MapClass.entrySet.apply(map_obj).iterator();
+        while (entry_set.hasNext()) {
+            const entry = Java.cast(entry_set.next(), EntryClass);
+            const key = entry.getKey();
+            const value = entry.getValue();
+            if (key == null || value == null) {
+                continue
+            }
+            result["" + key] = "" + value;
+        }
+    } catch (e) {
+        console.error(e)
+    }
+    return result;
+}
+
+function dump_collection(collection_obj){
+    let result = [];
+    try {
+        const CollectionClass = Java.use("java.util.Collection");
+        const object_array = CollectionClass.toArray.apply(collection_obj);
+        object_array.forEach(function (element) {
+            result.push("" + element);
+        });
+    } catch (e) {
+        console.error(e)
+    }
+    return result;
 }
 
 function list_class_core(){
@@ -458,16 +563,20 @@ function gen_response_data(response){
 
 function hook_func_frame(class_name, method_name, func){
     return wrap_java_perform(() => {
-        var cls = Java.use(class_name);
         var full_func_name = class_name + '.' + method_name;
-        if(cls[method_name] == undefined){
-            console.log('error: ' + full_func_name + ' not found in ' + cls + '!')
-        }else{
-            var n_overload_cnt = cls[method_name].overloads.length;
-            for (var index = 0; index < n_overload_cnt; index++) {
-                cls[method_name].overloads[index].implementation = func;
-                console.log(clr_yellow(clr_blink(  cls + "." + full_func_name + "() [" + index +  "] is hooked...")));
+        try{
+            var cls = Java.use(class_name);
+            if(cls[method_name] == undefined){
+                console.log('error: ' + full_func_name + ' not found in ' + cls + '!')
+            }else{
+                var n_overload_cnt = cls[method_name].overloads.length;
+                for (var index = 0; index < n_overload_cnt; index++) {
+                    cls[method_name].overloads[index].implementation = func;
+                    console.log(clr_yellow(clr_blink(full_func_name + "() [" + index +  "] is hooked...")));
+                }
             }
+        }catch(e){
+            console.log(clr_red(full_func_name + '() failed to hook.'))
         }
     });
 }
@@ -481,15 +590,15 @@ function hook_func(class_name, method_name){
         var datas = [];
         datas.push({type:"stack", data:get_stack_trace(), timestamp:timestamp, funcName:full_func_name});
         let args_before = get_arguments(arguments, arguments.length);
-        let fields_before = get_fields_ex(this);
+        let fields_before = get_fields(this);
         //调用原应用的方法
         let ret = this[method_name].apply(this, arguments);
         let args_after = get_arguments(arguments, arguments.length);
-        let fields_after = get_fields_ex(this);
-        let ret_fields = get_fields_ex(ret);
+        let fields_after = get_fields(this);
+        let ret_fields = get_fields(ret);
         let ret_class = get_class_safe(ret);
         datas.push({type:"arguments", before:JSON.stringify(args_before), after:JSON.stringify(args_after)});
-        datas.push({type:"fields", before:JSON.stringify(fields_before), after:JSON.stringify(fields_after)});
+        datas.push({type:"fields", before:JSON.stringify(fields_before), after:JSON.stringify(fields_after), class:class_name});
         datas.push({type:"return", class:ret_class, value:(ret!=null?ret.toString():"null"), fields:JSON.stringify(ret_fields)});
         send(datas);
         return ret;
@@ -1086,35 +1195,6 @@ function search_return(ret_class, exclude){
     return search_return_core(ret_class, exclude, false);
 }
 
-function probe_obj_method(_this, cls){
-    let class_name = trim(cls.toString().replace(/(class|interface)/g, ''));
-    let method_array = get_methods_safe(class_name);
-    let ret_values = [];
-    for (let i = 0; i < method_array.length; i++) {
-        let cur_method = method_array[i]; //当前方法
-        let str_method_name = cur_method.getName(); //当前方法名
-        let str_ret_type = '' + cur_method.getReturnType();
-        str_ret_type = trim(str_ret_type.replace(/(class|interface)/g, ''));
-        let str_param_types = trim('' + cur_method.getParameterTypes());
-        if(str_param_types == '' && str_ret_type != 'java.lang.Object'
-                && str_ret_type != 'boolean' && str_ret_type.indexOf('$') < 0
-                && str_method_name != 'toString'){
-            try{
-                let ret = '' + eval('_this.' + str_method_name + '()');
-                ret_values.push({method: str_method_name, ret: ret});
-            } catch (e) {
-            }
-        }
-    }
-    return ret_values;
-}
-
-function dump_object(_this){
-    let class_name = get_class_safe(_this);
-    let fields = get_fields_ex(_this);
-    send({type:"fields", before:JSON.stringify(fields), class:class_name});
-}
-
 function search_instance(class_name){
     return wrap_java_perform(() => {
         Java.choose(class_name, {
@@ -1262,20 +1342,6 @@ function list_register_natives(){
     return native_list;
 }
 
-function open_scheme_url(url){
-    return wrap_java_perform(() => {
-        const context = get_application_context();
-        const AndroidIntent = Java.use("android.content.Intent");
-        const Uri = Java.use("android.net.Uri");
-        // Init and launch the intent
-        const new_intent = AndroidIntent.$new(ACTION_VIEW, Uri.parse(url));
-        // new_intent.setFlags(FLAG_ACTIVITY_NEW_TASK);
-
-        context.startActivity(new_intent);
-        console.log(clr_yellow("scheme: ") + clr_cyan(url) + clr_yellow(" successfully asked to open."));
-    });
-}
-
 /*
 * startActivity
 * Author: sensepost
@@ -1304,4 +1370,11 @@ function start_activity(activity_class){
         context.startActivity(new_intent);
         console.log(clr_yellow("Activity:") + clr_cyan(activity_class) + clr_yellow(" successfully asked to start."));
     });
+}
+
+function hook_json_parser(){
+    hook_func('com.alibaba.fastjson.JSON', 'parseObject');
+    hook_func('com.google.gson.JsonParser', 'parse');
+    hook_func('org.codehaus.jackson.JsonFactory', 'createParser');
+    hook_func('net.sf.json.JSONObject', 'fromObject');
 }

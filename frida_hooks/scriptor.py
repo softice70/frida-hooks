@@ -63,6 +63,8 @@ class Scriptor:
         {'api': 'hookIntercept', 'func': 'hook_intercept', 'persistent': True, 'is_option': True,
          'help': 'hook the intercept() of some okhttp3 interceptor',
          'params': [{"name": "class", "type": "string"}]},
+        {'api': 'hookJsonParser', 'func': 'hook_json_parser', 'persistent': True, 'is_option': True,
+         'help': 'hook several common JSON parser'},
         {'api': 'dumpClass', 'func': 'dump_class', 'persistent': False, 'is_option': True,
          'help': 'dump the class',
          'params': [{"name": "class", "type": "string"}]},
