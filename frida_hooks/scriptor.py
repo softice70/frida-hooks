@@ -64,7 +64,8 @@ class Scriptor:
          'help': 'hook the intercept() of some okhttp3 interceptor',
          'params': [{"name": "class", "type": "string"}]},
         {'api': 'hookJsonParser', 'func': 'hook_json_parser', 'persistent': True, 'is_option': True,
-         'help': 'hook several common JSON parser'},
+         'help': 'hook several common JSON parser',
+         'params': [{"name": "keyword", "type": "string", "isOptional": True}]},
         {'api': 'dumpClass', 'func': 'dump_class', 'persistent': False, 'is_option': True,
          'help': 'dump the class',
          'params': [{"name": "class", "type": "string"}]},
@@ -73,6 +74,8 @@ class Scriptor:
          'params': [{"name": "module", "type": "string"}]},
         {'func': 'dump_dex', 'persistent': False, 'is_option': True,
          'help': 'dump dex files, please use --spawn to start the frida-hooks'},
+        {'func': 'save_apk', 'persistent': False, 'is_option': True,
+         'help': 'save APK file to local directory'},
         {'api': 'dumpSoMemory', 'func': 'dump_so_memory', 'persistent': False, 'is_option': True,
          'help': 'dump the memory of the module, Parameters: --module, --offset, --length',
          'params': [

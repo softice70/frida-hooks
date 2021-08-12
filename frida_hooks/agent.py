@@ -130,6 +130,8 @@ class FridaAgent:
                     self._dump_dex()
                 elif script['cmd'] == 'dump_so':
                     self._dump_so(script)
+                elif script['cmd'] == 'save_apk':
+                    self.save_apk(self._app_package)
                 elif script['cmd'] == 'list_app':
                     self.list_app(check_frida_server=False)
                 elif script['cmd'] == 'list_device':
@@ -228,6 +230,21 @@ class FridaAgent:
                 version = self.get_app_version(matching[0].identifier)
                 return {"pid": matching[0].pid, "identifier": matching[0].identifier, "name": matching[0].name, "version": version}
         return None
+
+    def save_apk(self, app):
+        app_info = self.find_app(app)
+        if app_info:
+            identifier = app_info["identifier"]
+            cmd = f'adb -s {self._device.id} shell su -c "cp /data/app/{identifier}-1/base.apk /sdcard/{identifier}.apk"'
+            exec_cmd(cmd, 30)
+            cmd = f'adb -s {self._device.id} pull /sdcard/{identifier}.apk"'
+            exec_cmd(cmd, 30)
+            cmd = f'adb -s {self._device.id} shell su -c "rm -f /sdcard/{identifier}.apk"'
+            exec_cmd(cmd, 30)
+            if os.path.exists(f'{identifier}.apk'):
+                print(f'apk file saved in {clr_blue(abspath(identifier + ".apk"))}.')
+            else:
+                print(clr_red('failed to the apk file.'))
 
     def list_process(self, check_frida_server=True):
         if not check_frida_server or self.start_frida_server() > 0:

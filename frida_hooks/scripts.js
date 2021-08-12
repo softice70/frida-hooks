@@ -581,27 +581,31 @@ function hook_func_frame(class_name, method_name, func){
     });
 }
 
-function hook_func(class_name, method_name){
+function hook_func(class_name, method_name, validate_func){
     return hook_func_frame(class_name, method_name, function () {
-        // console.log(clr_red(clr_blink('enter: ' + class_name + '.' + method_name)));
-        var full_func_name = class_name + '.' + method_name + '()';
-        // 获取时间戳
-        var timestamp = (new Date()).getTime();
-        var datas = [];
-        datas.push({type:"stack", data:get_stack_trace(), timestamp:timestamp, funcName:full_func_name});
-        let args_before = get_arguments(arguments, arguments.length);
-        let fields_before = get_fields(this);
-        //调用原应用的方法
-        let ret = this[method_name].apply(this, arguments);
-        let args_after = get_arguments(arguments, arguments.length);
-        let fields_after = get_fields(this);
-        let ret_fields = get_fields(ret);
-        let ret_class = get_class_safe(ret);
-        datas.push({type:"arguments", before:JSON.stringify(args_before), after:JSON.stringify(args_after)});
-        datas.push({type:"fields", before:JSON.stringify(fields_before), after:JSON.stringify(fields_after), class:class_name});
-        datas.push({type:"return", class:ret_class, value:(ret!=null?ret.toString():"null"), fields:JSON.stringify(ret_fields)});
-        send(datas);
-        return ret;
+        if(!validate_func || validate_func(class_name, method_name, arguments)){
+            // console.log(clr_red(clr_blink('enter: ' + class_name + '.' + method_name)));
+            var full_func_name = class_name + '.' + method_name + '()';
+            // 获取时间戳
+            var timestamp = (new Date()).getTime();
+            var datas = [];
+            datas.push({type:"stack", data:get_stack_trace(), timestamp:timestamp, funcName:full_func_name});
+            let args_before = get_arguments(arguments, arguments.length);
+            let fields_before = get_fields(this);
+            //调用原应用的方法
+            let ret = this[method_name].apply(this, arguments);
+            let args_after = get_arguments(arguments, arguments.length);
+            let fields_after = get_fields(this);
+            let ret_fields = get_fields(ret);
+            let ret_class = get_class_safe(ret);
+            datas.push({type:"arguments", before:JSON.stringify(args_before), after:JSON.stringify(args_after)});
+            datas.push({type:"fields", before:JSON.stringify(fields_before), after:JSON.stringify(fields_after), class:class_name});
+            datas.push({type:"return", class:ret_class, value:(ret!=null?ret.toString():"null"), fields:JSON.stringify(ret_fields)});
+            send(datas);
+            return ret;
+        }else{
+            return this[method_name].apply(this, arguments);
+        }
     });
 }
 
@@ -1372,9 +1376,27 @@ function start_activity(activity_class){
     });
 }
 
-function hook_json_parser(){
-    hook_func('com.alibaba.fastjson.JSON', 'parseObject');
-    hook_func('com.google.gson.JsonParser', 'parse');
-    hook_func('org.codehaus.jackson.JsonFactory', 'createParser');
-    hook_func('net.sf.json.JSONObject', 'fromObject');
+function hook_json_parser(keyword){
+    var validate_parser = function(class_name, method_name, args){
+        if(args.length > 0){
+            if(keyword != undefined && keyword != null && keyword != ""){
+                var val_str = "" + args[0];
+                return val_str.indexOf(keyword) >= 0;
+            }else{
+                return true;
+            }
+        }else{
+            return false;
+        }
+    }
+
+    hook_func('com.alibaba.fastjson.JSON', 'parseObject', validate_parser);
+    hook_func('com.alibaba.fastjson.JSON', 'parseArray', validate_parser);
+    hook_func('com.google.gson.JsonParser', 'parse', validate_parser);
+    hook_func('com.google.gson.Gson', 'fromJson', validate_parser);
+    hook_func('org.codehaus.jackson.JsonFactory', 'createParser', validate_parser);
+    hook_func('net.sf.json.JSONObject', 'fromObject', validate_parser);
+    hook_func('net.sf.json.JSONArray', 'fromObject', validate_parser);
+    hook_func('org.json.JSONObject', '$init', validate_parser);
+    hook_func('org.json.JSONArray', '$init', validate_parser);
 }
