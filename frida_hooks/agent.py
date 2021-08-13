@@ -111,11 +111,13 @@ class FridaAgent:
                 if self._keep_running:
                     self._keep_running = self.start_app(self._app_package, is_suspend=options.is_suspend)
                 self._start_http_server()
-                self._print_internal_cmd_help()
+                is_first_time = True
                 while self._keep_running:
-                    scripts_str, fun_on_msg = Scriptor.gen_script_str(self._scripts_map)
-                    if not self.load_script(scripts_str, fun_on_msg):
+                    scripts_str, fun_on_msg = Scriptor.gen_script_str(self._scripts_map, self._imp_mods)
+                    self.load_script(scripts_str, fun_on_msg)
+                    if is_first_time:
                         self._print_internal_cmd_help()
+                        is_first_time = False
                     self._run_console()
                     self.unload_script()
         except Exception as e:

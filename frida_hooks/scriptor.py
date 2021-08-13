@@ -54,10 +54,14 @@ class Scriptor:
         {'api': 'hookSo', 'func': 'hook_so', 'persistent': True, 'is_option': True,
          'help': 'hook all functions of some module',
          'params': [{"name": "module", "type": "string"}]},
+        {'api': 'hookHttpExecute', 'func': 'hook_http_execute', 'persistent': True, 'is_option': True,
+         'help': 'batch execute hook_http_url_connection, hook_okhttp_execute and hook_okhttp3_execute'},
+        {'api': 'hookHttpUrlConnection', 'func': 'hook_http_url_connection','is_option': True,
+         'help': 'hook com.android.okhttp.internal.huc.HttpURLConnectionImpl.execute()', 'persistent': False},
         {'api': 'hookOkhttpExecute', 'func': 'hook_okhttp_execute', 'persistent': True, 'is_option': True,
-         'help': 'hook com.android.okhttp.Call.execute, suggest to use when viewing request'},
+         'help': 'hook com.android.okhttp.Call.execute(), suggest to use when viewing request'},
         {'api': 'hookOkhttp3Execute', 'func': 'hook_okhttp3_execute', 'persistent': True, 'is_option': True,
-         'help': 'hook okHttp3.RealCall.execute, suggest to use when viewing request'},
+         'help': 'hook okHttp3.RealCall.execute(), suggest to use when viewing request'},
         {'api': 'hookOkhttp3Callserver', 'func': 'hook_okhttp3_CallServer', 'persistent': True, 'is_option': True,
          'help': 'hook okhttp3.CallServerInterceptor, suggest to use when viewing response'},
         {'api': 'hookIntercept', 'func': 'hook_intercept', 'persistent': True, 'is_option': True,
@@ -210,18 +214,12 @@ class Scriptor:
             if cmd != '':
                 print(clr_bright_red(f'unknown option, please see {clr_bright_cyan("options")}'))
             return script
-        script_str = fun_on_msg = None
-        file_script = Scriptor._get_option(options, "file_script")
-        if file_script != '':
-            script_str, rpc_define, fun_on_msg = Scriptor.__load_script_file(file_script, imp_mods)
         if cmd == 'custom':
+            file_script = Scriptor._get_option(options, "file_script")
             if file_script != '':
-                if script_str:
-                    key = f'--file_script {file_script}'
-                    script = {'script': script_str, 'cmd': 'custom', 'persistent': True, 'key': key, 'isEnable': True,
-                              'onMessage': fun_on_msg, 'apiCmd': '', 'params': None, 'rpcDefine': rpc_define}
-                else:
-                    print(f'Error: jscode not found in {file_script}!')
+                key = f'--file_script {file_script}'
+                script = {'file_script': file_script, 'cmd': 'custom', 'persistent': True, 'key': key,
+                          'isEnable': True, 'apiCmd': '', 'params': None}
             else:
                 print(clr_bright_red('custom: --file_script must be set'))
         elif cmd:
@@ -245,34 +243,35 @@ class Scriptor:
                 script['onMessage'] = Scriptor.on_message
                 script['isEnable'] = True
 
-        if script:
-            if fun_on_msg:
-                script['onMessage'] = fun_on_msg
         return script
 
     @staticmethod
     def gen_script_str(*args):
-        if len(args) == 1:
-            return Scriptor._gen_script_str_by_map(args[0])
+        if len(args) == 2:
+            return Scriptor._gen_script_str_by_map(args[0], args[1])
         elif len(args) == 3:
             return Scriptor._gen_script_str_by_params(args[0], args[1], args[2])
         else:
             raise ArgumentsErrorException('gen_script_str arguments error.')
 
     @staticmethod
-    def _gen_script_str_by_map(scripts_map):
+    def _gen_script_str_by_map(scripts_map, imp_mods):
         fun_on_msg = Scriptor.on_message
         scripts_str_ex = ''
         rpc_defines = []
         for key in scripts_map.keys():
             if scripts_map[key]['isEnable']:
-                if 'script' in scripts_map[key].keys():
-                    scripts_str_ex += scripts_map[key]['script'] + '\n'
-                    rpc_define = scripts_map[key]['rpcDefine']
-                    if rpc_define and isinstance(rpc_define, list):
-                        rpc_defines += rpc_define
-                    if scripts_map[key]['onMessage']:
-                        fun_on_msg = scripts_map[key]['onMessage']
+                if 'file_script' in scripts_map[key].keys():
+                    file_script = scripts_map[key]['file_script']
+                    cur_script_str, cur_rpc_define, cur_fun_on_msg = Scriptor.__load_script_file(file_script, imp_mods)
+                    if cur_script_str:
+                        scripts_str_ex += cur_script_str + '\n'
+                        if cur_rpc_define and isinstance(cur_rpc_define, list):
+                            rpc_defines += cur_rpc_define
+                        if cur_fun_on_msg:
+                            fun_on_msg = cur_fun_on_msg
+                    else:
+                        print(f'Error: jscode not found in {file_script}!')
         scripts_str = Scriptor._merge_script(rpc_defines, scripts_str_ex)
         return scripts_str, fun_on_msg
 
@@ -284,10 +283,13 @@ class Scriptor:
 
     @staticmethod
     def clean_scripts_map(scripts_map):
+        _id = 0
         new_map = {}
         for key in scripts_map.keys():
             if scripts_map[key]['persistent']:
                 new_map[key] = scripts_map[key]
+                new_map[key]["id"] = _id
+                _id += 1
         return new_map
 
     @staticmethod
@@ -362,7 +364,8 @@ class Scriptor:
                 fields_after = json.loads(msg_data['after']) if 'after' in msg_data.keys() else fields_before
                 field_list = Scriptor.__prepare_fields_msg(fields_before, fields_after)
                 class_name = msg_data["class"] + " " if 'class' in msg_data.keys() else ''
-                text_to_print = clr_bright_green(f'{class_name}fields:[{len(fields_before)}]\n') + '\n'.join(field_list)
+                value = msg_data["value"] + " " if 'value' in msg_data.keys() else ''
+                text_to_print = clr_bright_green(f'{class_name}fields:[{len(fields_before)}]  {clr_yellow(value)}\n') + '\n'.join(field_list)
             elif msg_data['type'] == 'return':
                 if 'funcName' in msg_data.keys():
                     text_to_print = clr_bright_green(clr_blink(f'{_underline}{msg_data["funcName"]:^40}'
@@ -429,10 +432,14 @@ class Scriptor:
             if file_script in imp_mods.keys():
                 mod = imp_mods[file_script]
                 importlib.reload(mod)
+                print(f'module {clr_cyan(file_script)} was reloaded.')
             else:
                 mod = importlib.import_module(file_script)
                 if mod:
                     imp_mods[file_script] = mod
+                    print(f'module {clr_cyan(file_script)} was loaded.')
+                else:
+                    print(clr_red(f'module {file_script} failed to load.'))
             if mod:
                 if hasattr(mod, "jscode"):
                     script_str = mod.jscode

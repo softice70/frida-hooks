@@ -99,8 +99,15 @@ function java_use_safe(class_name){
 }
 
 function get_real_class_name(object) {
-    const objClass = Java.use("java.lang.Object").getClass.apply(object);
-    return Java.use("java.lang.Class").getName.apply(objClass)
+    if(object != undefined && object != null){
+        try {
+            const objClass = Java.use("java.lang.Object").getClass.apply(object);
+            return Java.use("java.lang.Class").getName.apply(objClass)
+        } catch (e) {
+            get_class_safe(object);
+        }
+    }
+    return ''
 }
 
 function is_instance_of(object, className){
@@ -147,10 +154,15 @@ function trim(str, is_global){
     return result;
 }
 
-function dump_object(_this){
+function dump_object(_this, not_send){
     let class_name = get_real_class_name(_this);
     let fields = get_fields(_this);
-    send({type:"fields", before:JSON.stringify(fields), class:class_name});
+    let value = "" + _this;
+    let ret = {type: "fields", value: value, before: JSON.stringify(fields), class: class_name};
+    if(!not_send){
+        send(ret);
+    }
+    return ret;
 }
 
 function has_own_property(obj, name) {
@@ -190,6 +202,27 @@ function get_class_safe(_this){
     } catch (e) {
     }
     return ''
+}
+
+//获取字段信息
+function get_field_obj(_this, field_name){
+    var field_obj = null;
+    if(_this != undefined || _this != null){
+        try {
+            const cls = _this.getClass();
+            const field_array = cls.getDeclaredFields();
+            for (var i = 0; i < field_array.length; i++){
+                let field = field_array[i]; //当前成员
+                field.setAccessible(true);
+                let cur_field_name = field.getName();
+                if(cur_field_name == field_name){
+                    return field.get(_this);
+                }
+            }
+        } catch (e) {
+        }
+    }
+    return field_obj;
 }
 
 //获取字段信息
@@ -521,14 +554,8 @@ function gen_request_data(request){
 }
 
 function gen_response_data(response){
-    var cls = null;
-    var response_class = null;
-    try {
-        cls = response.getClass();
-        response_class = Java.use("okhttp3.Response");
-    } catch (e) {
-    }
-    if (cls !== null && response_class != null && cls.equals(response_class.class)) {
+    var class_name = get_real_class_name(response);
+    if (class_name == "okhttp3.Response" || class_name == "com.android.okhttp.Response") {
         let data = null;
         try {
             var responseBody = response.body();
@@ -555,7 +582,6 @@ function gen_response_data(response){
         }
         return data;
     }else{
-        let class_name = trim(cls.toString().replace(/(class|interface)/g, ''));
         return {type:"response",response:(response!=null?response.toString():"null"),
                 class: class_name};
     }
@@ -597,7 +623,7 @@ function hook_func(class_name, method_name, validate_func){
             let args_after = get_arguments(arguments, arguments.length);
             let fields_after = get_fields(this);
             let ret_fields = get_fields(ret);
-            let ret_class = get_class_safe(ret);
+            let ret_class = get_real_class_name(ret);
             datas.push({type:"arguments", before:JSON.stringify(args_before), after:JSON.stringify(args_after)});
             datas.push({type:"fields", before:JSON.stringify(fields_before), after:JSON.stringify(fields_after), class:class_name});
             datas.push({type:"return", class:ret_class, value:(ret!=null?ret.toString():"null"), fields:JSON.stringify(ret_fields)});
@@ -682,34 +708,73 @@ function hook_so(module_name){
     });
 }
 
-function hook_okhttp_execute(){
-    return hook_func_frame('com.android.okhttp.Call', 'execute', function(){
-            let datas = [];
-            var timestamp = (new Date()).getTime();
-            let func_name = "com.android.okhttp.Call.execute()";
-            datas.push({type:"stack", data:get_stack_trace(), timestamp:timestamp, funcName:func_name});
-            var response = this.execute();
+function hook_okhttp_execute_core(class_name, method_name){
+    return hook_func_frame(class_name, method_name, function(){
+        let datas = [];
+        var timestamp = (new Date()).getTime();
+        let func_name = class_name + "." + method_name + "()";
+        datas.push({type:"stack", data:get_stack_trace(), timestamp:timestamp, funcName:func_name});
+        var response = this[method_name].apply(this, arguments);
+        try{
             var request = this.request();
             datas.push(gen_request_data(request));
             datas.push(gen_response_data(response));
-            send_msg(datas)
-            return response;
-        });
+        }catch(e){
+            console.error(e);
+        }
+        send_msg(datas)
+        return response;
+    });
+}
+
+function hook_okhttp_execute(){
+    return hook_okhttp_execute_core('com.android.okhttp.Call', 'execute');
 }
 
 function hook_okhttp3_execute(){
-    return hook_func_frame('okhttp3.RealCall', 'execute', function(){
-            let datas = [];
-            var timestamp = (new Date()).getTime();
-            let func_name = "okhttp3.RealCall.execute()";
-            datas.push({type:"stack", data:get_stack_trace(), timestamp:timestamp, funcName:func_name});
-            var response = this.execute();
-            var request = this.request();
-            datas.push(gen_request_data(request));
-            datas.push(gen_response_data(response));
-            send_msg(datas)
-            return response;
-        });
+    return hook_okhttp_execute_core('okhttp3.RealCall', 'execute');
+}
+
+function hook_http_url_connection(){
+    var class_name = 'com.android.okhttp.internal.huc.HttpURLConnectionImpl';
+    var method_name = 'execute';
+    return hook_func_frame(class_name, method_name, function(){
+        let datas = [];
+        var timestamp = (new Date()).getTime();
+        let func_name = class_name + "." + method_name + "()";
+        datas.push({type:"stack", data:get_stack_trace(), timestamp:timestamp, funcName:func_name});
+        try{
+            var engine = get_field_obj(this, "httpEngine");
+            var request = get_field_obj(engine, "userRequest");
+            var url = "" + get_field_obj(request, "url");
+            var method = get_field_obj(request, "method");
+            var headers = "" + get_field_obj(request, "headers");
+            datas.push({type: "request", url: url, headers: headers, method:method});
+        }catch(e){
+            console.error("catch an exception in parsing request:", e);
+        }
+        var ret = this[method_name].apply(this, arguments);
+        try{
+            var engine = get_field_obj(this, "httpEngine");
+            var response = get_field_obj(engine, "userResponse");
+            if(response != null){
+                response = this.getResponse().getResponse();
+                datas.push(gen_response_data(response));
+            }else{
+                datas.push({type:"response",response:"null", class: "com.android.okhttp.Response"});
+            }
+        }catch(e){
+            datas.push({type:"response",response:"null", class: "com.android.okhttp.Response"});
+        }
+        send_msg(datas)
+        return ret;
+    });
+}
+
+function hook_http_execute(){
+    hook_http_url_connection();
+    hook_okhttp_execute();
+    hook_okhttp3_execute();
 }
 
 function hook_okhttp3_CallServer(){
@@ -1400,3 +1465,4 @@ function hook_json_parser(keyword){
     hook_func('org.json.JSONObject', '$init', validate_parser);
     hook_func('org.json.JSONArray', '$init', validate_parser);
 }
+
