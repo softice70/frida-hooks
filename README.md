@@ -8,7 +8,9 @@ Frida-Hooks
 --------
 - 自动启动frida-server
 - 自动启动应用程序，支持spawn模式
-- hook okhttp3网络通讯
+- hook HttpURLConnection、okhttp和okhttp3网络通讯
+- 支持ssl_unpinning
+- 支持无代理模式的中间人抓包，可以不用安装Drony就可以在fiddler、Charles或mitmproxy中抓包 
 - hook指定的类的全部或部分方法
 - hook指定so的全部或部分函数
 - hook某应用的registerNatives函数
@@ -75,6 +77,13 @@ $ frida-hooks
 ![在这里插入图片描述](https://github.com/softice70/frida-hooks/blob/main/pics/demo2.jpg)
 ![在这里插入图片描述](https://github.com/softice70/frida-hooks/blob/main/pics/demo3.jpg)
 ![在这里插入图片描述](https://github.com/softice70/frida-hooks/blob/main/pics/demo4.jpg)
+![在这里插入图片描述](https://github.com/softice70/frida-hooks/blob/main/pics/bypass-no-proxy.jpg)
+![在这里插入图片描述](https://github.com/softice70/frida-hooks/blob/main/pics/ssl-unpinning.jpg)
+- ssl_unpinning的启动方式
+  - 建议使用spawn模式启动，并加上 --ssl_unpinning 选项，如
+  ```bash
+  $ frida-hooks com.xxx.foo -S --ssl_unpinning
+  ```
 - 加载自定义脚本
   - 简单说明
     - rpc_define: 定义 frida-hooks 扩展信息
@@ -133,6 +142,7 @@ Thanks
 - [https://github.com/F8LEFT/SoFixer](https://github.com/F8LEFT/SoFixer)
 - [https://github.com/sensepost/objection](https://github.com/sensepost/objection)
 - [https://github.com/lasting-yang/frida_dump](https://github.com/lasting-yang/frida_dump)
+- [https://github.com/httptoolkit/frida-android-unpinning](https://github.com/httptoolkit/frida-android-unpinning)
 
 License
 -------
