@@ -70,6 +70,10 @@ class Scriptor:
         {'api': 'hookJsonParser', 'func': 'hook_json_parser', 'persistent': True, 'is_option': True,
          'help': 'hook several common JSON parser',
          'params': [{"name": "keyword", "type": "string", "isOptional": True}]},
+        {'api': 'sslUnpinning', 'func': 'ssl_unpinning', 'persistent': True, 'is_option': True,
+         'help': 'ssl unpinning powered by [git]WooyunDota/DroidSSLUnpinning, suggest to use --spawn to start the frida-hook'},
+        {'api': 'bypassNoProxy', 'func': 'bypass_no_proxy', 'persistent': True, 'is_option': True,
+         'help': 'bypass the Proxy.NO_PROXY setting'},
         {'api': 'dumpClass', 'func': 'dump_class', 'persistent': False, 'is_option': True,
          'help': 'dump the class',
          'params': [{"name": "class", "type": "string"}]},
@@ -497,7 +501,8 @@ class Scriptor:
                 ret = 'custom'
         else:
             try:
-                ret = getattr(options, item) if getattr(options, item) else default
+                param = item if item not in ['module', 'class', 'func'] else item + "_name"
+                ret = getattr(options, param) if getattr(options, param) else default
             except:
                 ret = default
         return ret

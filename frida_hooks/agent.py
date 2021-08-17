@@ -56,8 +56,9 @@ class FridaAgent:
                 self._script.load()
                 if self._is_app_suspend:
                     self._exec_script_in_spawn_mode()
-                    self._exec_script_cmd_after_load()
                     self._device.resume(self._target_pid)
+                    print(f'app[{clr_cyan(self._target_pid)}] was resumed.')
+                    self._exec_script_cmd_after_load()
                     self._is_app_suspend = False
                 else:
                     self._exec_script_cmd_after_load()
@@ -122,6 +123,7 @@ class FridaAgent:
                     self.unload_script()
         except Exception as e:
             print(f'run:{e}')
+            self._print_error_script(e)
         self.exit()
 
     def exec_one_script(self, script):
@@ -752,8 +754,13 @@ class FridaAgent:
         line_no = None
         start_line = 0
         end_line = len(self._script_src) - 1
-        if len(cmd) == 2 and is_number(cmd[1]):
-            line_no = max(int(cmd[1]) - 1, 0)
+        if cmd:
+            if isinstance(cmd, list) and len(cmd) == 2 and is_number(cmd[1]):
+                line_no = int(cmd[1])
+            elif is_number(cmd):
+                line_no = int(cmd)
+        if line_no is not None:
+            line_no = max(line_no - 1, 0)
             start_line = max(line_no - 10, 0)
             end_line = min(start_line + 21, len(self._script_src) - 1)
             start_line = max(end_line - 21, 0)
@@ -774,3 +781,8 @@ class FridaAgent:
         else:
             print(Scriptor.get_cmd_usage('app_version'))
 
+    def _print_error_script(self, e):
+        if hasattr(e, 'args') and isinstance(e.args, tuple) and len(e.args) > 0:
+            matches = re.search(r'^script\(line (\d*)\): SyntaxError:', e.args[0])
+            if matches is not None:
+                self._print_script(matches.group(1))

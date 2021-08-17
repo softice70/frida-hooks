@@ -51,6 +51,12 @@ const not_safe_classes = {
     "androidx.core.app.JobIntentService$f$a": true,
     "com.amap.api.col.sl2.c9": true,
     "androidx.media.k$a": true,
+    "com.facebook.imagepipeline.common.ImageDecodeOptions": true,
+    "com.ss.ttvideoengine.strategrycenter.StrategyCenter": true,
+    "com.facebook.imagepipeline.common.ImageDecodeOptionsBuilder": true,
+    "com.alibaba.android.arouter.facade.model.RouteMeta": true,
+    "com.alibaba.android.arouter.facade.Postcard": true,
+    "androidx.core.view.accessibility.AccessibilityNodeInfoCompat$TouchDelegateInfoCompat": true,
 }
 
 const FLAG_ACTIVITY_NEW_TASK = 0x10000000;
@@ -1466,3 +1472,644 @@ function hook_json_parser(keyword){
     hook_func('org.json.JSONArray', '$init', validate_parser);
 }
 
+/*
+* frida-android-unpinning
+* Author: httptoolkit
+* HomePage: https://github.com/httptoolkit/frida-android-unpinning
+* */
+function ssl_unpinning(){
+    return wrap_java_perform(() => {
+        let datas = [];
+
+        // HttpsURLConnection
+        try {
+            const HttpsURLConnection = Java.use("javax.net.ssl.HttpsURLConnection");
+            HttpsURLConnection.setDefaultHostnameVerifier.implementation = function (hostnameVerifier) {
+                console.log('  --> Bypassing HttpsURLConnection (setDefaultHostnameVerifier)');
+                return; // Do nothing, i.e. don't change the hostname verifier
+            };
+            datas.push(clr_yellow('[+] HttpsURLConnection (setDefaultHostnameVerifier)'));
+        } catch (err) {
+            datas.push('[ ] HttpsURLConnection (setDefaultHostnameVerifier)');
+        }
+        try {
+            const HttpsURLConnection = Java.use("javax.net.ssl.HttpsURLConnection");
+            HttpsURLConnection.setSSLSocketFactory.implementation = function (SSLSocketFactory) {
+                console.log('  --> Bypassing HttpsURLConnection (setSSLSocketFactory)');
+                return; // Do nothing, i.e. don't change the SSL socket factory
+            };
+            datas.push(clr_yellow('[+] HttpsURLConnection (setSSLSocketFactory)'));
+        } catch (err) {
+            datas.push('[ ] HttpsURLConnection (setSSLSocketFactory)');
+        }
+        try {
+            const HttpsURLConnection = Java.use("javax.net.ssl.HttpsURLConnection");
+            HttpsURLConnection.setHostnameVerifier.implementation = function (hostnameVerifier) {
+                console.log('  --> Bypassing HttpsURLConnection (setHostnameVerifier)');
+                return; // Do nothing, i.e. don't change the hostname verifier
+            };
+            datas.push(clr_yellow('[+] HttpsURLConnection (setHostnameVerifier)'));
+        } catch (err) {
+            datas.push('[ ] HttpsURLConnection (setHostnameVerifier)');
+        }
+
+        // SSLContext
+        try {
+            const X509TrustManager = Java.use('javax.net.ssl.X509TrustManager');
+            const SSLContext = Java.use('javax.net.ssl.SSLContext');
+
+            const TrustManager = Java.registerClass({
+                // Implement a custom TrustManager
+                name: 'dev.asd.test.TrustManager',
+                implements: [X509TrustManager],
+                methods: {
+                    checkClientTrusted: function (chain, authType) { },
+                    checkServerTrusted: function (chain, authType) { },
+                    getAcceptedIssuers: function () { return []; }
+                }
+            });
+
+            // Prepare the TrustManager array to pass to SSLContext.init()
+            const TrustManagers = [TrustManager.$new()];
+
+            // Get a handle on the init() on the SSLContext class
+            const SSLContext_init = SSLContext.init.overload(
+                '[Ljavax.net.ssl.KeyManager;', '[Ljavax.net.ssl.TrustManager;', 'java.security.SecureRandom'
+            );
+
+            // Override the init method, specifying the custom TrustManager
+            SSLContext_init.implementation = function (keyManager, trustManager, secureRandom) {
+                console.log('  --> Bypassing Trustmanager (Android < 7) request');
+                SSLContext_init.call(this, keyManager, TrustManagers, secureRandom);
+            };
+            datas.push(clr_yellow('[+] SSLContext'));
+        } catch (err) {
+            datas.push('[ ] SSLContext');
+        }
+
+        // TrustManagerImpl (Android > 7)
+        try {
+            const array_list = Java.use("java.util.ArrayList");
+            const TrustManagerImpl = Java.use('com.android.org.conscrypt.TrustManagerImpl');
+
+            // This step is notably what defeats the most common case: network security config
+            TrustManagerImpl.checkTrustedRecursive.implementation = function(a1, a2, a3, a4, a5, a6) {
+                console.log('  --> Bypassing TrustManagerImpl checkTrusted ');
+                return array_list.$new();
+            }
+
+            TrustManagerImpl.verifyChain.implementation = function (untrustedChain, trustAnchorChain, host, clientAuth, ocspData, tlsSctData) {
+                console.log('  --> Bypassing TrustManagerImpl verifyChain: ' + host);
+                return untrustedChain;
+            };
+            datas.push(clr_yellow('[+] TrustManagerImpl'));
+        } catch (err) {
+            datas.push('[ ] TrustManagerImpl');
+        }
+
+        // OkHTTPv3 (quadruple bypass)
+        try {
+            // Bypass OkHTTPv3 {1}
+            const okhttp3_Activity_1 = Java.use('okhttp3.CertificatePinner');
+            okhttp3_Activity_1.check.overload('java.lang.String', 'java.util.List').implementation = function (a, b) {
+                console.log('  --> Bypassing OkHTTPv3 (list): ' + a);
+            };
+            datas.push(clr_yellow('[+] OkHTTPv3 (list)'));
+        } catch (err) {
+            datas.push('[ ] OkHTTPv3 (list)');
+        }
+        try {
+            // Bypass OkHTTPv3 {2}
+            // This method of CertificatePinner.check could be found in some old Android app
+            const okhttp3_Activity_2 = Java.use('okhttp3.CertificatePinner');
+            okhttp3_Activity_2.check.overload('java.lang.String', 'java.security.cert.Certificate').implementation = function (a, b) {
+                console.log('  --> Bypassing OkHTTPv3 (cert): ' + a);
+            };
+            datas.push(clr_yellow('[+] OkHTTPv3 (cert)'));
+        } catch (err) {
+            datas.push('[ ] OkHTTPv3 (cert)');
+        }
+        try {
+            // Bypass OkHTTPv3 {3}
+            const okhttp3_Activity_3 = Java.use('okhttp3.CertificatePinner');
+            okhttp3_Activity_3.check.overload('java.lang.String', '[Ljava.security.cert.Certificate;').implementation = function (a, b) {
+                console.log('  --> Bypassing OkHTTPv3 (cert array): ' + a);
+            };
+            datas.push(clr_yellow('[+] OkHTTPv3 (cert array)'));
+        } catch (err) {
+            datas.push('[ ] OkHTTPv3 (cert array)');
+        }
+        try {
+            // Bypass OkHTTPv3 {4}
+            const okhttp3_Activity_4 = Java.use('okhttp3.CertificatePinner');
+            okhttp3_Activity_4['check$okhttp'].implementation = function (a, b) {
+                console.log('  --> Bypassing OkHTTPv3 ($okhttp): ' + a);
+            };
+            datas.push(clr_yellow('[+] OkHTTPv3 ($okhttp)'));
+        } catch (err) {
+            datas.push('[ ] OkHTTPv3 ($okhttp)');
+        }
+
+        // Trustkit (triple bypass)
+        try {
+            // Bypass Trustkit {1}
+            const trustkit_Activity_1 = Java.use('com.datatheorem.android.trustkit.pinning.OkHostnameVerifier');
+            trustkit_Activity_1.verify.overload('java.lang.String', 'javax.net.ssl.SSLSession').implementation = function (a, b) {
+                console.log('  --> Bypassing Trustkit OkHostnameVerifier(SSLSession): ' + a);
+                return true;
+            };
+            trustkit_Activity_1.verify.overload('java.lang.String', 'java.security.cert.X509Certificate').implementation = function(a) {
+                console.log('  --> Bypassing Trustkit OkHostnameVerifier(X509Certificate): ' + a);
+                return true;
+            };
+
+            datas.push(clr_yellow('[+] Trustkit OkHostnameVerifier(SSLSession)'));
+        } catch (err) {
+            datas.push('[ ] Trustkit OkHostnameVerifier(SSLSession)');
+        }
+        try {
+            // Bypass Trustkit {2}
+            const trustkit_Activity_2 = Java.use('com.datatheorem.android.trustkit.pinning.OkHostnameVerifier');
+            trustkit_Activity_2.verify.overload('java.lang.String', 'java.security.cert.X509Certificate').implementation = function (a, b) {
+                console.log('  --> Bypassing Trustkit OkHostnameVerifier(cert): ' + a);
+                return true;
+            };
+            datas.push(clr_yellow('[+] Trustkit OkHostnameVerifier(cert)'));
+        } catch (err) {
+            datas.push('[ ] Trustkit OkHostnameVerifier(cert)');
+        }
+        try {
+            // Bypass Trustkit {3}
+            const trustkit_PinningTrustManager = Java.use('com.datatheorem.android.trustkit.pinning.PinningTrustManager');
+            trustkit_PinningTrustManager.checkServerTrusted.implementation = function () {
+                console.log('  --> Bypassing Trustkit PinningTrustManager');
+            };
+            datas.push(clr_yellow('[+] Trustkit PinningTrustManager'));
+        } catch (err) {
+            datas.push('[ ] Trustkit PinningTrustManager');
+        }
+
+        // Appcelerator Titanium
+        try {
+            const appcelerator_PinningTrustManager = Java.use('appcelerator.https.PinningTrustManager');
+            appcelerator_PinningTrustManager.checkServerTrusted.implementation = function () {
+                console.log('  --> Bypassing Appcelerator PinningTrustManager');
+            };
+            datas.push(clr_yellow('[+] Appcelerator PinningTrustManager'));
+        } catch (err) {
+            datas.push('[ ] Appcelerator PinningTrustManager');
+        }
+
+        // OpenSSLSocketImpl Conscrypt
+        try {
+            const OpenSSLSocketImpl = Java.use('com.android.org.conscrypt.OpenSSLSocketImpl');
+            OpenSSLSocketImpl.verifyCertificateChain.implementation = function (certRefs, authMethod) {
+                console.log('  --> Bypassing OpenSSLSocketImpl Conscrypt');
+            };
+            datas.push(clr_yellow('[+] OpenSSLSocketImpl Conscrypt'));
+        } catch (err) {
+            datas.push('[ ] OpenSSLSocketImpl Conscrypt');
+        }
+
+        // OpenSSLEngineSocketImpl Conscrypt
+        try {
+            const OpenSSLEngineSocketImpl_Activity = Java.use('com.android.org.conscrypt.OpenSSLEngineSocketImpl');
+            OpenSSLEngineSocketImpl_Activity.verifyCertificateChain.overload('[Ljava.lang.Long;', 'java.lang.String').implementation = function (a, b) {
+                console.log('  --> Bypassing OpenSSLEngineSocketImpl Conscrypt: ' + b);
+            };
+            datas.push(clr_yellow('[+] OpenSSLEngineSocketImpl Conscrypt'));
+        } catch (err) {
+            datas.push('[ ] OpenSSLEngineSocketImpl Conscrypt');
+        }
+
+        // OpenSSLSocketImpl Apache Harmony
+        try {
+            const OpenSSLSocketImpl_Harmony = Java.use('org.apache.harmony.xnet.provider.jsse.OpenSSLSocketImpl');
+            OpenSSLSocketImpl_Harmony.verifyCertificateChain.implementation = function (asn1DerEncodedCertificateChain, authMethod) {
+                console.log('  --> Bypassing OpenSSLSocketImpl Apache Harmony');
+            };
+            datas.push(clr_yellow('[+] OpenSSLSocketImpl Apache Harmony'));
+        } catch (err) {
+            datas.push('[ ] OpenSSLSocketImpl Apache Harmony');
+        }
+
+        // PhoneGap sslCertificateChecker (https://github.com/EddyVerbruggen/SSLCertificateChecker-PhoneGap-Plugin)
+        try {
+            const phonegap_Activity = Java.use('nl.xservices.plugins.sslCertificateChecker');
+            phonegap_Activity.execute.overload('java.lang.String', 'org.json.JSONArray', 'org.apache.cordova.CallbackContext').implementation = function (a, b, c) {
+                console.log('  --> Bypassing PhoneGap sslCertificateChecker: ' + a);
+                return true;
+            };
+            datas.push(clr_yellow('[+] PhoneGap sslCertificateChecker'));
+        } catch (err) {
+            datas.push('[ ] PhoneGap sslCertificateChecker');
+        }
+
+        // IBM MobileFirst pinTrustedCertificatePublicKey (double bypass)
+        try {
+            // Bypass IBM MobileFirst {1}
+            const WLClient_Activity_1 = Java.use('com.worklight.wlclient.api.WLClient');
+            WLClient_Activity_1.getInstance().pinTrustedCertificatePublicKey.overload('java.lang.String').implementation = function (cert) {
+                console.log('  --> Bypassing IBM MobileFirst pinTrustedCertificatePublicKey (string): ' + cert);
+                return;
+            };
+            datas.push(clr_yellow('[+] IBM MobileFirst pinTrustedCertificatePublicKey (string)'));
+        } catch (err) {
+            datas.push('[ ] IBM MobileFirst pinTrustedCertificatePublicKey (string)');
+        }
+        try {
+            // Bypass IBM MobileFirst {2}
+            const WLClient_Activity_2 = Java.use('com.worklight.wlclient.api.WLClient');
+            WLClient_Activity_2.getInstance().pinTrustedCertificatePublicKey.overload('[Ljava.lang.String;').implementation = function (cert) {
+                console.log('  --> Bypassing IBM MobileFirst pinTrustedCertificatePublicKey (string array): ' + cert);
+                return;
+            };
+            datas.push(clr_yellow('[+] IBM MobileFirst pinTrustedCertificatePublicKey (string array)'));
+        } catch (err) {
+            datas.push('[ ] IBM MobileFirst pinTrustedCertificatePublicKey (string array)');
+        }
+
+        // IBM WorkLight (ancestor of MobileFirst) HostNameVerifierWithCertificatePinning (quadruple bypass)
+        try {
+            // Bypass IBM WorkLight {1}
+            const worklight_Activity_1 = Java.use('com.worklight.wlclient.certificatepinning.HostNameVerifierWithCertificatePinning');
+            worklight_Activity_1.verify.overload('java.lang.String', 'javax.net.ssl.SSLSocket').implementation = function (a, b) {
+                console.log('  --> Bypassing IBM WorkLight HostNameVerifierWithCertificatePinning (SSLSocket): ' + a);
+                return;
+            };
+            datas.push(clr_yellow('[+] IBM WorkLight HostNameVerifierWithCertificatePinning (SSLSocket)'));
+        } catch (err) {
+            datas.push('[ ] IBM WorkLight HostNameVerifierWithCertificatePinning (SSLSocket)');
+        }
+        try {
+            // Bypass IBM WorkLight {2}
+            const worklight_Activity_2 = Java.use('com.worklight.wlclient.certificatepinning.HostNameVerifierWithCertificatePinning');
+            worklight_Activity_2.verify.overload('java.lang.String', 'java.security.cert.X509Certificate').implementation = function (a, b) {
+                console.log('  --> Bypassing IBM WorkLight HostNameVerifierWithCertificatePinning (cert): ' + a);
+                return;
+            };
+            datas.push(clr_yellow('[+] IBM WorkLight HostNameVerifierWithCertificatePinning (cert)'));
+        } catch (err) {
+            datas.push('[ ] IBM WorkLight HostNameVerifierWithCertificatePinning (cert)');
+        }
+        try {
+            // Bypass IBM WorkLight {3}
+            const worklight_Activity_3 = Java.use('com.worklight.wlclient.certificatepinning.HostNameVerifierWithCertificatePinning');
+            worklight_Activity_3.verify.overload('java.lang.String', '[Ljava.lang.String;', '[Ljava.lang.String;').implementation = function (a, b) {
+                console.log('  --> Bypassing IBM WorkLight HostNameVerifierWithCertificatePinning (string string): ' + a);
+                return;
+            };
+            datas.push(clr_yellow('[+] IBM WorkLight HostNameVerifierWithCertificatePinning (string string)'));
+        } catch (err) {
+            datas.push('[ ] IBM WorkLight HostNameVerifierWithCertificatePinning (string string)');
+        }
+        try {
+            // Bypass IBM WorkLight {4}
+            const worklight_Activity_4 = Java.use('com.worklight.wlclient.certificatepinning.HostNameVerifierWithCertificatePinning');
+            worklight_Activity_4.verify.overload('java.lang.String', 'javax.net.ssl.SSLSession').implementation = function (a, b) {
+                console.log('  --> Bypassing IBM WorkLight HostNameVerifierWithCertificatePinning (SSLSession): ' + a);
+                return true;
+            };
+            datas.push(clr_yellow('[+] IBM WorkLight HostNameVerifierWithCertificatePinning (SSLSession)'));
+        } catch (err) {
+            datas.push('[ ] IBM WorkLight HostNameVerifierWithCertificatePinning (SSLSession)');
+        }
+
+        // Conscrypt CertPinManager
+        try {
+            const conscrypt_CertPinManager_Activity = Java.use('com.android.org.conscrypt.CertPinManager');
+            conscrypt_CertPinManager_Activity.isChainValid.overload('java.lang.String', 'java.util.List').implementation = function (a, b) {
+                console.log('  --> Bypassing Conscrypt CertPinManager: ' + a);
+                return true;
+            };
+            datas.push(clr_yellow('[+] Conscrypt CertPinManager'));
+        } catch (err) {
+            datas.push('[ ] Conscrypt CertPinManager');
+        }
+
+        // CWAC-Netsecurity (unofficial back-port pinner for Android<4.2) CertPinManager
+        try {
+            const cwac_CertPinManager_Activity = Java.use('com.commonsware.cwac.netsecurity.conscrypt.CertPinManager');
+            cwac_CertPinManager_Activity.isChainValid.overload('java.lang.String', 'java.util.List').implementation = function (a, b) {
+                console.log('  --> Bypassing CWAC-Netsecurity CertPinManager: ' + a);
+                return true;
+            };
+            datas.push(clr_yellow('[+] CWAC-Netsecurity CertPinManager'));
+        } catch (err) {
+            datas.push('[ ] CWAC-Netsecurity CertPinManager');
+        }
+
+        // Worklight Androidgap WLCertificatePinningPlugin
+        try {
+            const androidgap_WLCertificatePinningPlugin_Activity = Java.use('com.worklight.androidgap.plugin.WLCertificatePinningPlugin');
+            androidgap_WLCertificatePinningPlugin_Activity.execute.overload('java.lang.String', 'org.json.JSONArray', 'org.apache.cordova.CallbackContext').implementation = function (a, b, c) {
+                console.log('  --> Bypassing Worklight Androidgap WLCertificatePinningPlugin: ' + a);
+                return true;
+            };
+            datas.push(clr_yellow('[+] Worklight Androidgap WLCertificatePinningPlugin'));
+        } catch (err) {
+            datas.push('[ ] Worklight Androidgap WLCertificatePinningPlugin');
+        }
+
+        // Netty FingerprintTrustManagerFactory
+        try {
+            const netty_FingerprintTrustManagerFactory = Java.use('io.netty.handler.ssl.util.FingerprintTrustManagerFactory');
+            netty_FingerprintTrustManagerFactory.checkTrusted.implementation = function (type, chain) {
+                console.log('  --> Bypassing Netty FingerprintTrustManagerFactory');
+            };
+            datas.push(clr_yellow('[+] Netty FingerprintTrustManagerFactory'));
+        } catch (err) {
+            datas.push('[ ] Netty FingerprintTrustManagerFactory');
+        }
+
+        // Squareup CertificatePinner [OkHTTP<v3] (double bypass)
+        try {
+            var OkHttpClient = Java.use("com.squareup.okhttp.OkHttpClient");
+            OkHttpClient.setCertificatePinner.implementation = function(certificatePinner) {
+                // do nothing
+                console.log('  --> OkHttpClient.setCertificatePinner Called!');
+                return this;
+            };
+            datas.push(clr_yellow('[+] Squareup OkHttpClient (setCert)'));
+        } catch (err) {
+            datas.push('[ ] Squareup OkHttpClient (setCert)');
+        }
+        try {
+            // Bypass Squareup CertificatePinner {1}
+            const Squareup_CertificatePinner_Activity_1 = Java.use('com.squareup.okhttp.CertificatePinner');
+            Squareup_CertificatePinner_Activity_1.check.overload('java.lang.String', 'java.security.cert.Certificate').implementation = function (a, b) {
+                console.log('  --> Bypassing Squareup CertificatePinner (cert): ' + a);
+                return;
+            };
+            datas.push(clr_yellow('[+] Squareup CertificatePinner (cert)'));
+        } catch (err) {
+            datas.push('[ ] Squareup CertificatePinner (cert)');
+        }
+        try {
+            // Bypass Squareup CertificatePinner {1}
+            const Squareup_CertificatePinner_Activity_1 = Java.use('com.squareup.okhttp.CertificatePinner');
+            Squareup_CertificatePinner_Activity_1.check.overload('java.lang.String', '[Ljava.security.cert.Certificate;').implementation = function (a, b) {
+                console.log('  --> Bypassing Squareup CertificatePinner (cert): ' + a);
+                return;
+            };
+            datas.push(clr_yellow('[+] Squareup CertificatePinner (cert)'));
+        } catch (err) {
+            datas.push('[ ] Squareup CertificatePinner (cert)');
+        }
+        try {
+            // Bypass Squareup CertificatePinner {2}
+            const Squareup_CertificatePinner_Activity_2 = Java.use('com.squareup.okhttp.CertificatePinner');
+            Squareup_CertificatePinner_Activity_2.check.overload('java.lang.String', 'java.util.List').implementation = function (a, b) {
+                console.log('  --> Bypassing Squareup CertificatePinner (list): ' + a);
+                return;
+            };
+            datas.push(clr_yellow('[+] Squareup CertificatePinner (list)'));
+        } catch (err) {
+            datas.push('[ ] Squareup CertificatePinner (list)');
+        }
+
+        // Squareup OkHostnameVerifier [OkHTTP v3] (double bypass)
+        try {
+            // Bypass Squareup OkHostnameVerifier {1}
+            const Squareup_OkHostnameVerifier_Activity_1 = Java.use('com.squareup.okhttp.internal.tls.OkHostnameVerifier');
+            Squareup_OkHostnameVerifier_Activity_1.verify.overload('java.lang.String', 'java.security.cert.X509Certificate').implementation = function (a, b) {
+                console.log('  --> Bypassing Squareup OkHostnameVerifier (cert): ' + a);
+                return true;
+            };
+            datas.push(clr_yellow('[+] Squareup OkHostnameVerifier (cert)'));
+        } catch (err) {
+            datas.push('[ ] Squareup OkHostnameVerifier (cert)');
+        }
+        try {
+            // Bypass Squareup OkHostnameVerifier {2}
+            const Squareup_OkHostnameVerifier_Activity_2 = Java.use('com.squareup.okhttp.internal.tls.OkHostnameVerifier');
+            Squareup_OkHostnameVerifier_Activity_2.verify.overload('java.lang.String', 'javax.net.ssl.SSLSession').implementation = function (a, b) {
+                console.log('  --> Bypassing Squareup OkHostnameVerifier (SSLSession): ' + a);
+                return true;
+            };
+            datas.push(clr_yellow('[+] Squareup OkHostnameVerifier (SSLSession)'));
+        } catch (err) {
+            datas.push('[ ] Squareup OkHostnameVerifier (SSLSession)');
+        }
+
+        // Android WebViewClient (double bypass)
+        try {
+            // Bypass WebViewClient {1} (deprecated from Android 6)
+            const AndroidWebViewClient_Activity_1 = Java.use('android.webkit.WebViewClient');
+            AndroidWebViewClient_Activity_1.onReceivedSslError.overload('android.webkit.WebView', 'android.webkit.SslErrorHandler', 'android.net.http.SslError').implementation = function (webView, sslErrorHandler, sslError) {
+                console.log('  --> Bypassing Android WebViewClient (SslErrorHandler)');
+				//todo: need check -- Ryan
+				sslErrorHandler.proceed();
+            };
+            datas.push(clr_yellow('[+] Android WebViewClient (SslErrorHandler)'));
+        } catch (err) {
+            datas.push('[ ] Android WebViewClient (SslErrorHandler)');
+        }
+        try {
+            // Bypass WebViewClient {2}
+            const AndroidWebViewClient_Activity_2 = Java.use('android.webkit.WebViewClient');
+            AndroidWebViewClient_Activity_2.onReceivedSslError.overload('android.webkit.WebView', 'android.webkit.WebResourceRequest', 'android.webkit.WebResourceError').implementation = function (obj1, obj2, obj3) {
+                console.log('  --> Bypassing Android WebViewClient (WebResourceError)');
+            };
+            datas.push(clr_yellow('[+] Android WebViewClient (WebResourceError)'));
+        } catch (err) {
+            datas.push('[ ] Android WebViewClient (WebResourceError)');
+        }
+        try {
+            // Bypass WebViewClient {3}
+            const AndroidWebViewClient_Activity_3 = Java.use('android.webkit.WebViewClient');
+			AndroidWebViewClient_Activity_3.onReceivedError.overload('android.webkit.WebView', 'int', 'java.lang.String', 'java.lang.String').implementation = function(a, b, c, d) {
+                console.log('  --> Bypassing Android WebViewClient (OnReceivedError[1])');
+            };
+            datas.push(clr_yellow('[+] Android WebViewClient (OnReceivedError[1])'));
+        } catch (err) {
+            datas.push('[ ] Android WebViewClient (OnReceivedError[1])');
+        }
+        try {
+            // Bypass WebViewClient {4}
+            const AndroidWebViewClient_Activity_4 = Java.use('android.webkit.WebViewClient');
+			AndroidWebViewClient_Activity_4.onReceivedError.overload('android.webkit.WebView', 'android.webkit.WebResourceRequest', 'android.webkit.WebResourceError').implementation = function() {
+                console.log('  --> Bypassing Android WebViewClient (OnReceivedError[2])');
+            };
+            datas.push(clr_yellow('[+] Android WebViewClient (OnReceivedError[2])'));
+        } catch (err) {
+            datas.push('[ ] Android WebViewClient (OnReceivedError[3])');
+        }
+
+        // Apache Cordova WebViewClient
+        try {
+            const CordovaWebViewClient_Activity = Java.use('org.apache.cordova.CordovaWebViewClient');
+            CordovaWebViewClient_Activity.onReceivedSslError.overload('android.webkit.WebView', 'android.webkit.SslErrorHandler', 'android.net.http.SslError').implementation = function (obj1, obj2, obj3) {
+                console.log('  --> Bypassing Apache Cordova WebViewClient');
+                obj3.proceed();
+            };
+            datas.push(clr_yellow('[+] Apache Cordova WebViewClient'));
+        } catch (err) {
+            datas.push('[ ] Apache Cordova WebViewClient');
+        }
+
+        // Boye AbstractVerifier
+        try {
+            const boye_AbstractVerifier = Java.use('ch.boye.httpclientandroidlib.conn.ssl.AbstractVerifier');
+            boye_AbstractVerifier.verify.implementation = function (host, ssl) {
+                console.log('  --> Bypassing Boye AbstractVerifier: ' + host);
+            };
+            datas.push(clr_yellow('[+] Boye AbstractVerifier'));
+        } catch (err) {
+            datas.push('[ ] Boye AbstractVerifier');
+        }
+
+        /*** Xutils3.x hooks ***/
+        //Implement a new HostnameVerifier
+        var TrustHostnameVerifier;
+        try {
+            TrustHostnameVerifier = Java.registerClass({
+                name: 'org.wooyun.TrustHostnameVerifier',
+                implements: [HostnameVerifier],
+                methods: {
+                    verify: function(hostname, session) {
+						console.log('  --> Bypassing HostnameVerifier verify');
+                        return true;
+                    }
+                }
+            });
+            var RequestParams = Java.use('org.xutils.http.RequestParams');
+            // Prepare a Empty SSLFactory
+            var TLS_SSLContext = SSLContext.getInstance("TLS");
+            TLS_SSLContext.init(null, TrustManagers, null);
+            var EmptySSLFactory = TLS_SSLContext.getSocketFactory();
+			RequestParams.setSslSocketFactory.implementation = function(sslSocketFactory) {
+                sslSocketFactory = EmptySSLFactory;
+                return null;
+            }
+            RequestParams.setHostnameVerifier.implementation = function(hostnameVerifier) {
+                hostnameVerifier = TrustHostnameVerifier.$new();
+                return null;
+            }
+            datas.push(clr_yellow('[+] Xutils'));
+        } catch (e) {
+            datas.push('[ ] Xutils');
+        }
+        try {
+            //cronet pinner hook
+            //weibo don't invoke
+            var netBuilder = Java.use("org.chromium.net.CronetEngine$Builder");
+            //https://developer.android.com/guide/topics/connectivity/cronet/reference/org/chromium/net/CronetEngine.Builder.html#enablePublicKeyPinningBypassForLocalTrustAnchors(boolean)
+            netBuilder.enablePublicKeyPinningBypassForLocalTrustAnchors.implementation = function(arg) {
+                //weibo not invoke
+                //console.log("Enables or disables public key pinning bypass for local trust anchors = " + arg);
+                console.log('  --> Cronet enablePublicKeyPinning = ' + arg);
+                //true to enable the bypass, false to disable.
+                var ret = netBuilder.enablePublicKeyPinningBypassForLocalTrustAnchors.call(this, true);
+                return ret;
+            };
+
+            netBuilder.addPublicKeyPins.implementation = function(hostName, pinsSha256, includeSubdomains, expirationDate) {
+                console.log('  --> Cronet addPublicKeyPins hostName = ' + hostName);
+
+                //var ret = netBuilder.addPublicKeyPins.call(this,hostName, pinsSha256,includeSubdomains, expirationDate);
+                //this �ǵ��� addPublicKeyPins ǰ�Ķ�����? Yes,CronetEngine.Builder
+                return this;
+            };
+            datas.push(clr_yellow('[+] Cronet pinner'));
+        } catch (err) {
+            datas.push('[ ] Cronet pinner');
+        }
+
+        // curl_easy_setopt
+        const CURLOPT_CUSTOMREQUEST = 10036;
+        const CURLOPT_URL = 10002;
+        const CURLOPT_POSTFIELDS = 10015;
+        const CURLOPT_HTTPHEADER = 10023;
+
+        const CURLOPT_SSL_VERIFYPEER = 64;
+        const CURLOPT_SSL_VERIFYHOST = 81;
+        const CURLOPT_PINNEDPUBLICKEY = 10230;
+
+        const NUL = ptr( '0x00' );
+
+        try {
+            let is_curl_located = false;
+            let modules = Process.enumerateModules();
+            for ( let _module of modules ) {
+                let _export = _module.findExportByName( 'curl_easy_setopt' );
+                if ( _export != null ) {
+                    is_curl_located = true;
+                    datas.push(clr_yellow(`[+] Curl Easy Setopt in ${_module.name}`));
+                    Interceptor.attach( _export , {
+                        onEnter: function ( args ) {
+                            let opt = args[1].toInt32();
+
+                            // log requests for a quick view
+                            switch ( opt ) {
+                                case CURLOPT_CUSTOMREQUEST:
+                                    console.log( `Method = ${ args[2].readCString() }` );
+                                break;
+                                case CURLOPT_URL:
+                                    console.log( `URL = ${ args[2].readCString() }` );
+                                break;
+                                case CURLOPT_POSTFIELDS:
+                                    console.log( 'Method = POST' );
+                                break;
+                            }
+
+                            // skip options related to ssl pinning
+                            if (
+                                opt == CURLOPT_SSL_VERIFYPEER ||
+                                opt == CURLOPT_SSL_VERIFYHOST ||
+                                opt == CURLOPT_PINNEDPUBLICKEY
+                            ){
+                                args[2] = NUL;
+                                console.log( `--> Bypassed libcurl SSL Pinning ( opt = ${opt} )` );
+                            }
+                        }
+                    });
+                }
+            }
+
+            if ( !is_curl_located ) {
+                datas.push('[ ] Curl Easy Setopt')
+            }
+        } catch (err) {
+            datas.push('[ ] Curl Easy Setopt')
+        }
+
+        datas.push(clr_yellow("Unpinning setup cmopleted"));
+        send_msg(datas);
+    });
+}
+
+function bypass_no_proxy(){
+    const class_name = 'okhttp3.RealCall';
+    const method_name = 'execute';
+    return hook_func_frame(class_name, method_name, function(){
+        let datas = [];
+        var timestamp = (new Date()).getTime();
+        let func_name = class_name + "." + method_name + "()";
+        datas.push({type:"stack", data:get_stack_trace(), timestamp:timestamp, funcName:func_name});
+        let old_proxy = undefined;
+        try{
+            if(this.client.value._proxy.value != null && this.client.value._proxy.value.toString() == 'DIRECT'){
+                old_proxy = this.client.value._proxy.value;
+                this.client.value._proxy.value = null;
+                datas.push("  --> Bypassing no_proxy");
+                datas.push({type:"stack", data:get_stack_trace(), timestamp:timestamp, funcName:func_name});
+            }
+        }catch(e){
+            console.error(e);
+        }
+        var response = this[method_name].apply(this, arguments);
+        try{
+            if(old_proxy != undefined){
+                this.client.value._proxy.value = old_proxy;
+                var request = this.request();
+                datas.push(gen_request_data(request));
+                datas.push(gen_response_data(response));
+                send_msg(datas)
+            }
+        }catch(e){
+            console.error(e);
+        }
+        return response;
+    });
+}
