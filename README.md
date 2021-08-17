@@ -77,13 +77,20 @@ $ frida-hooks
 ![在这里插入图片描述](https://github.com/softice70/frida-hooks/blob/main/pics/demo2.jpg)
 ![在这里插入图片描述](https://github.com/softice70/frida-hooks/blob/main/pics/demo3.jpg)
 ![在这里插入图片描述](https://github.com/softice70/frida-hooks/blob/main/pics/demo4.jpg)
-![在这里插入图片描述](https://github.com/softice70/frida-hooks/blob/main/pics/bypass-no-proxy.jpg)
-![在这里插入图片描述](https://github.com/softice70/frida-hooks/blob/main/pics/ssl-unpinning.jpg)
 - ssl_unpinning的启动方式
   - 建议使用spawn模式启动，并加上 --ssl_unpinning 选项，如
   ```bash
   $ frida-hooks com.xxx.foo -S --ssl_unpinning
   ```
+  - 下面是目前支持的ssl_unpinning的列表：
+![在这里插入图片描述](https://github.com/softice70/frida-hooks/blob/main/pics/ssl-unpinning.jpg)
+- bypass_no_proxy
+  - 有些应用使用了无代理模式进行通信，此时可以子命令 bypass_no_proxy，关闭应用的无代理模式，从而可以不用安装Drony就可以在fiddler、Charles或mitmproxy中抓包
+  ```bash
+  > run --bypass_no_proxy
+  ```
+  - 下面生效时的截图：
+![在这里插入图片描述](https://github.com/softice70/frida-hooks/blob/main/pics/bypass-no-proxy.jpg)
 - 加载自定义脚本
   - 简单说明
     - rpc_define: 定义 frida-hooks 扩展信息
