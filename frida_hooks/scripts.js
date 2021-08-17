@@ -522,33 +522,43 @@ function gen_request_data(request){
     } catch (e) {
     }
     if (cls !== null && request_class != null && cls.equals(request_class.class)) {
-        var ByteString = Java.use("okio.ByteString");
-        var Buffer = Java.use("okio.Buffer");
         let data = null;
         try{
             var url = request.url().toString();
             var method = request.method();
             var headers = request.headers().toString();
             var body = '';
-            var requestBody = request.body();
-            var contentLength = requestBody ? requestBody.contentLength() : 0;
-            if (contentLength > 0) {
-                var BufferObj = Buffer.$new();
-                requestBody.writeTo(BufferObj);
-                try {
-                    body = ByteString.of(BufferObj.readByteArray().utf8());
-                } catch (error) {
+            try{
+                var requestBody = request.body();
+                var contentLength = requestBody ? requestBody.contentLength() : 0;
+                if (contentLength > 0) {
+                    var Buffer = java_use_safe("okio.Buffer");
+                    var ByteString = null;
+                    if(Buffer == null){
+                        Buffer = java_use_safe("com.android.okhttp.okio.Buffer")
+                        ByteString = java_use_safe("com.android.okhttp.okio.ByteString");
+                    }else{
+                        ByteString = java_use_safe("okio.ByteString");
+                    }
+                    var BufferObj = Buffer.$new();
+                    requestBody.writeTo(BufferObj);
                     try {
-                        body = ByteString.of(BufferObj.readByteArray()).hex();
+                        body = ByteString.of(BufferObj.readByteArray().utf8());
                     } catch (error) {
-                        console.log("error 1:", error);
+                        try {
+                            body = ByteString.of(BufferObj.readByteArray()).hex();
+                        } catch (error) {
+                            console.log(clr_red("error in parsing body: "), error);
+                        }
                     }
                 }
+            }catch(e){
+                console.log(clr_red("error in parsing body: "), e);
             }
             data = {type: "request", request: (request != null? request.toString(): "null"), url: url,
                     method: method, headers: headers, body: body};
         } catch (error) {
-            console.log("error 2:", error);
+           console.log(clr_red("error in parsing body: "), error);
         }
         return data;
     }else{
@@ -2079,21 +2089,58 @@ function ssl_unpinning(){
     });
 }
 
-function bypass_no_proxy(){
-    const class_name = 'okhttp3.RealCall';
-    const method_name = 'execute';
+function bypass_no_proxy_core(class_name, method_name){
+    function get_proxy_value(_this){
+        try{
+            if(_this.client.value._proxy.value != null && _this.client.value._proxy.value.toString() == 'DIRECT'){
+                return _this.client.value._proxy.value;
+            }
+        }catch(e){    }
+        try{
+            if(_this.client.value.proxy.value != null && _this.client.value.proxy.value.toString() == 'DIRECT'){
+                return _this.client.value.proxy.value;
+            }
+        }catch(e){    }
+        try{
+            if(_this._client.value._proxy.value != null && _this._client.value._proxy.value.toString() == 'DIRECT'){
+                return _this._client.value._proxy.value;
+            }
+        }catch(e){    }
+        try{
+            if(_this._client.value.proxy.value != null && _this._client.value.proxy.value.toString() == 'DIRECT'){
+                return _this._client.value.proxy.value;
+            }
+        }catch(e){    }
+        return null;
+    }
+
+    function set_proxy_value(_this, value){
+        try{
+            _this.client.value._proxy.value = value;
+        }catch(e){    }
+        try{
+            _this.client.value.proxy.value = value;
+        }catch(e){    }
+        try{
+            _this._client.value._proxy.value = value;
+        }catch(e){    }
+        try{
+            _this._client.value.proxy.value = value;
+        }catch(e){    }
+    }
+
     return hook_func_frame(class_name, method_name, function(){
         let datas = [];
-        var timestamp = (new Date()).getTime();
-        let func_name = class_name + "." + method_name + "()";
-        datas.push({type:"stack", data:get_stack_trace(), timestamp:timestamp, funcName:func_name});
         let old_proxy = undefined;
         try{
-            if(this.client.value._proxy.value != null && this.client.value._proxy.value.toString() == 'DIRECT'){
-                old_proxy = this.client.value._proxy.value;
+            let cur_proxy = get_proxy_value(this);
+            if(cur_proxy != null){
+                let timestamp = (new Date()).getTime();
+                let func_name = class_name + "." + method_name + "()";
+                old_proxy = cur_proxy;
                 this.client.value._proxy.value = null;
-                datas.push("  --> Bypassing no_proxy");
                 datas.push({type:"stack", data:get_stack_trace(), timestamp:timestamp, funcName:func_name});
+                datas.push({type:"action", data:"Bypassing no_proxy"});
             }
         }catch(e){
             console.error(e);
@@ -2101,7 +2148,7 @@ function bypass_no_proxy(){
         var response = this[method_name].apply(this, arguments);
         try{
             if(old_proxy != undefined){
-                this.client.value._proxy.value = old_proxy;
+                set_proxy_value(this, old_proxy);
                 var request = this.request();
                 datas.push(gen_request_data(request));
                 datas.push(gen_response_data(response));
@@ -2112,4 +2159,10 @@ function bypass_no_proxy(){
         }
         return response;
     });
+}
+
+function bypass_no_proxy(){
+    bypass_no_proxy_core('com.android.okhttp.internal.huc.HttpURLConnectionImpl', 'execute');
+    bypass_no_proxy_core('com.android.okhttp.Call', 'execute');
+    bypass_no_proxy_core('okhttp3.RealCall', 'execute');
 }

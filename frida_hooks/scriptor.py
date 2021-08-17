@@ -397,6 +397,11 @@ class Scriptor:
                 text_to_print = clr_bright_green(f'request:\n') + '\n'.join(parse_request(msg_data))
             elif msg_data['type'] == 'response':
                 text_to_print = clr_bright_green(f'response:\n') + '\n'.join(parse_response(msg_data))
+            elif 'data' in msg_data.keys():
+                text_to_print = f'{clr_bright_green(msg_data["type"] + ":")} {clr_purple(msg_data["data"])}'
+            else:
+                msgs = [f'{i}: {msg_data[i]}' for i in msg_data.keys()]
+                text_to_print = f'{clr_bright_purple("* ")}' + ', '.join(msgs)
         else:
             text_to_print = Scriptor.__get_print_text_for_dict(msg_data)
         if not Scriptor._is_silence:
