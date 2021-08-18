@@ -131,6 +131,7 @@ class Scriptor:
         {'api': 'memoryDump', 'func': 'memory_dump', 'persistent': False, 'is_option': False},
         {'api': 'scanDex', 'func': 'scan_dex', 'persistent': False, 'is_option': False},
         {'api': 'hookLibArt', 'func': 'hook_lib_art', 'persistent': False, 'is_option': False},
+        {'api': 'hookCertFile', 'func': 'hook_cert_file', 'persistent': False, 'is_option': False},
         {'api': 'findSo', 'func': 'find_so', 'persistent': False, 'is_option': False},
         {'api': 'setColorMode', 'func': 'set_color_mode', 'persistent': False, 'is_option': False},
     ]

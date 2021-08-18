@@ -239,16 +239,20 @@ class FridaAgent:
         app_info = self.find_app(app)
         if app_info:
             identifier = app_info["identifier"]
-            cmd = f'adb -s {self._device.id} shell su -c "cp /data/app/{identifier}-1/base.apk /sdcard/{identifier}.apk"'
-            exec_cmd(cmd, 30)
-            cmd = f'adb -s {self._device.id} pull /sdcard/{identifier}.apk"'
-            exec_cmd(cmd, 30)
-            cmd = f'adb -s {self._device.id} shell su -c "rm -f /sdcard/{identifier}.apk"'
-            exec_cmd(cmd, 30)
-            if os.path.exists(f'{identifier}.apk'):
-                print(f'apk file saved in {clr_blue(abspath(identifier + ".apk"))}.')
+            apk_path = self._get_apk_path(identifier)
+            if apk_path:
+                cmd = f'adb -s {self._device.id} shell su -c "cp {apk_path} /sdcard/{identifier}.apk"'
+                exec_cmd(cmd, 30)
+                cmd = f'adb -s {self._device.id} pull /sdcard/{identifier}.apk"'
+                exec_cmd(cmd, 30)
+                cmd = f'adb -s {self._device.id} shell su -c "rm -f /sdcard/{identifier}.apk"'
+                exec_cmd(cmd, 30)
+                if os.path.exists(f'{identifier}.apk'):
+                    print(f'apk file saved in {clr_blue(abspath(identifier + ".apk"))}.')
+                else:
+                    print(clr_red('failed to the apk file.'))
             else:
-                print(clr_red('failed to the apk file.'))
+                print(clr_red(f'can not found the apk file of {identifier}.'))
 
     def list_process(self, check_frida_server=True):
         if not check_frida_server or self.start_frida_server() > 0:
@@ -563,6 +567,7 @@ class FridaAgent:
         return ret
 
     def _exec_script_cmd_after_load(self):
+        self._script.exports.hook_cert_file()
         for key in self._scripts_map.keys():
             self.exec_one_script(self._scripts_map[key])
 
@@ -786,3 +791,14 @@ class FridaAgent:
             matches = re.search(r'^script\(line (\d*)\): SyntaxError:', e.args[0])
             if matches is not None:
                 self._print_script(matches.group(1))
+
+    def _get_apk_path(self, package):
+        cmd = f'adb -s {self._device.id} shell pm list packages -f'
+        ret = exec_cmd(cmd, 30)
+        lines = re.split('\r\n', ret)
+        for line in lines:
+            line = line[8:]
+            parts = re.split('=', line)
+            if len(parts) == 2 and parts[1] == package:
+                return parts[0]
+        return None
