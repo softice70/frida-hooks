@@ -395,9 +395,9 @@ class Scriptor:
                         + f' {item["offset"]} {clr_bright_purple(item["name"])} {item["sig"]}')
                 text_to_print = '\n'.join(method_infos)
             elif msg_data['type'] == 'request':
-                text_to_print = clr_bright_green(f'request:\n') + '\n'.join(parse_request(msg_data))
+                text_to_print = clr_bright_green(f'request:\n') + '\n'.join(Scriptor._parse_request(msg_data))
             elif msg_data['type'] == 'response':
-                text_to_print = clr_bright_green(f'response:\n') + '\n'.join(parse_response(msg_data))
+                text_to_print = clr_bright_green(f'response:\n') + '\n'.join(Scriptor._parse_response(msg_data))
             elif 'data' in msg_data.keys():
                 text_to_print = f'{clr_bright_green(msg_data["type"] + ":")} {clr_purple(msg_data["data"])}'
             else:
@@ -414,7 +414,7 @@ class Scriptor:
         field_list = []
         for key in fields_before.keys():
             field_name = fields_before[key]['field'] if 'field' in fields_before[key].keys() else key
-            if fields_before[key]['value'] == fields_after[key]['value']:
+            if fields_after is None or fields_before[key]['value'] == fields_after[key]['value']:
                 field_info = prefix + " field: " + clr_bright_cyan(field_name) + "\tclass: " + fields_before[key]['class'] \
                              + "\tvalue: " + clr_bright_purple(str(fields_before[key]['value']))
             else:
@@ -581,6 +581,76 @@ class Scriptor:
                 rpc_exports.append(f'    {item["api"]}: {item["func"]},')
         export_script = 'rpc.exports = {\n' + '\n'.join(rpc_exports) + '\n}\n\n'
         return export_script + _script_core + script_str_ex
+
+    @staticmethod
+    def _parse_request(data):
+        param_infos = []
+        for key in ['method', 'url', 'headers', 'body', 'class', 'request', 'probe']:
+            if key in data.keys():
+                if key == 'headers':
+                    headers = data['headers'].strip().replace("\n", ", ")
+                    param_infos.append(f'  {clr_bright_cyan("headers")}: {headers}')
+                elif key == 'body':
+                    if isinstance(data[key], dict):
+                        if len(data[key].keys()) > 0:
+                            param_infos.append(f'  {clr_bright_cyan(key)}:')
+                            param_infos += Scriptor.__prepare_fields_msg(data[key], None, "    └")
+                    elif isinstance(data[key], str) and len(data[key]) > 0:
+                        param_infos.append(f'  {clr_bright_cyan(key)}: {data[key].strip()}')
+                else:
+                    if isinstance(data[key], str) and len(data[key]) > 0:
+                        param_infos.append(f'  {clr_bright_cyan(key)}: {data[key].strip()}')
+        return param_infos
+
+    @staticmethod
+    def _parse_response(data):
+        response = data['response'].strip()[9:-1]
+        param_infos = []
+        while len(response) > 0:
+            param, response = Scriptor.__get_param_from_request(response)
+            param_infos.append(param)
+        for key in ['headers', 'body', 'class', 'response']:
+            if key in data.keys():
+                if key != 'headers':
+                    if len(data[key]) > 0:
+                        param = f'  {clr_bright_cyan(key)}: {data[key].strip()}'
+                    else:
+                        continue
+                else:
+                    headers = data['headers'].strip().replace("\n", ", ")
+                    param = f'  {clr_bright_cyan("headers")}: {headers}'
+                param_infos.append(param)
+        return param_infos
+
+    @staticmethod
+    def __get_param_from_request(request):
+        key, request = Scriptor.__get_key_from_request(request)
+        value, request = Scriptor.__get_value_from_request(request)
+        param = f'  {clr_bright_cyan(key)}: {value}'
+        return param, request
+
+    @staticmethod
+    def __get_key_from_request(request):
+        idx = request.find("=")
+        key = request[:idx]
+        request = request[idx + 1:]
+        return key, request
+
+    @staticmethod
+    def __get_value_from_request(request):
+        if request[0] == '[':
+            start = 1
+            idx = request.find("],")
+            next_start = idx + 3 if idx >= 0 else -1
+        else:
+            start = 0
+            idx = request.find(",")
+            next_start = idx + 2 if idx >= 0 else -1
+        value = request[start:idx] if idx >= 0 else request[start:]
+        request = request[next_start:] if next_start > 0 else ''
+        return value, request
+
+
 
 
 _script_core = Scriptor.load_scripts()

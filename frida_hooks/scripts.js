@@ -59,6 +59,8 @@ const not_safe_classes = {
     "androidx.core.view.accessibility.AccessibilityNodeInfoCompat$TouchDelegateInfoCompat": true,
 }
 
+const BASIC_CLASSES = ["java.lang.","java.util.","java.io.","java.net.","java.sql.","java.awt.","java.swing.","java.text."];
+
 const FLAG_ACTIVITY_NEW_TASK = 0x10000000;
 const ACTION_VIEW = "android.intent.action.VIEW";
 
@@ -90,6 +92,19 @@ function wrap_java_perform(fn){
 function send_msg(data){
     if(data){
         send(data);
+    }
+}
+
+function is_basic_class(class_name){
+    if(!class_name){
+        return true;
+    }else{
+        for(var i = 0; i < BASIC_CLASSES.length; i++) {
+            if(class_name.indexOf(BASIC_CLASSES[i]) >= 0){
+                return true;
+            }
+        }
+        return false;
     }
 }
 
@@ -273,7 +288,9 @@ function get_arguments(arg_list, arg_cnt){
         var fields = {};
         try {
             class_name = get_real_class_name(arg_list[idx_arg]);
-            fields = get_fields(arg_list[idx_arg]);
+            if(!is_basic_class(class_name)){
+                fields = get_fields(arg_list[idx_arg]);
+            }
         } catch (e) {
         }
         args[idx_arg] = {class: class_name, value: '' + arg_list[idx_arg], fields: fields};
@@ -296,8 +313,8 @@ function get_stack_trace(){
     return Java.use("java.lang.Thread").currentThread().getStackTrace().toString();
 }
 
-function probe_obj_method(_this, cls){
-    let class_name = trim(cls.toString().replace(/(class|interface)/g, ''));
+function probe_obj_method(_this){
+    let class_name = get_real_class_name(_this);
     let method_array = get_methods_safe(class_name);
     let ret_values = [];
     for (let i = 0; i < method_array.length; i++) {
@@ -514,24 +531,17 @@ function list_broadcast_receivers() {
 }
 
 function gen_request_data(request){
-    var cls = null;
-    var request_class = null;
-    try {
-        cls = request.getClass();
-        request_class = Java.use("okhttp3.Request");
-    } catch (e) {
-    }
-    if (cls !== null && request_class != null && cls.equals(request_class.class)) {
+    var class_name = get_real_class_name(request);
+    if (class_name == "okhttp3.Request" || class_name == "com.android.okhttp.Request") {
         let data = null;
         try{
             var url = request.url().toString();
             var method = request.method();
             var headers = request.headers().toString();
+            var requestBody = request.body();
             var body = '';
-            try{
-                var requestBody = request.body();
-                var contentLength = requestBody ? requestBody.contentLength() : 0;
-                if (contentLength > 0) {
+            if(method == 'POST' && requestBody){
+                try{
                     var Buffer = java_use_safe("okio.Buffer");
                     var ByteString = null;
                     if(Buffer == null){
@@ -543,27 +553,31 @@ function gen_request_data(request){
                     var BufferObj = Buffer.$new();
                     requestBody.writeTo(BufferObj);
                     try {
-                        body = ByteString.of(BufferObj.readByteArray().utf8());
+                        body = ByteString.of(BufferObj.readByteArray()).utf8();
                     } catch (error) {
+//                        console.log(clr_red("error in parsing body - 1: "), error);
                         try {
                             body = ByteString.of(BufferObj.readByteArray()).hex();
                         } catch (error) {
-                            console.log(clr_red("error in parsing body: "), error);
+//                            console.log(clr_red("error in parsing body - 2: "), error);
                         }
                     }
+                }catch(e){
+//                    console.log(clr_red("error in parsing body: "), e);
                 }
-            }catch(e){
-                console.log(clr_red("error in parsing body: "), e);
+                if(body == null || body == ''){
+                    body = get_fields(requestBody);
+                }
             }
-            data = {type: "request", request: (request != null? request.toString(): "null"), url: url,
+            data = {type: "request", request: request.toString(), url: url,
                     method: method, headers: headers, body: body};
         } catch (error) {
-           console.log(clr_red("error in parsing body: "), error);
+            console.log(clr_red("error in parsing request: "), error);
+            data = {type: "request", request: request.toString()};
         }
         return data;
     }else{
-        let class_name = trim(cls.toString().replace(/(class|interface)/g, ''));
-        let ret_values = probe_obj_method(request, cls)
+        let ret_values = probe_obj_method(request)
         return {type: "request", request: (request != null? request.toString(): "null"),
                 probe: JSON.stringify(ret_values), class: class_name};
     }
@@ -640,8 +654,11 @@ function hook_func(class_name, method_name, validate_func){
             let ret = this[method_name].apply(this, arguments);
             let args_after = get_arguments(arguments, arguments.length);
             let fields_after = get_fields(this);
-            let ret_fields = get_fields(ret);
+            let ret_fields = {};
             let ret_class = get_real_class_name(ret);
+            if(!is_basic_class(ret_class)){
+                ret_fields = get_fields(ret);
+            }
             datas.push({type:"arguments", before:JSON.stringify(args_before), after:JSON.stringify(args_after)});
             datas.push({type:"fields", before:JSON.stringify(fields_before), after:JSON.stringify(fields_after), class:class_name});
             datas.push({type:"return", class:ret_class, value:(ret!=null?ret.toString():"null"), fields:JSON.stringify(ret_fields)});
