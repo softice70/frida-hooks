@@ -63,6 +63,7 @@ def is_number(s):
 
 
 def __get_pid_in_text(text, pname):
+    pname = pname.lower()
     lines = re.split('\r\n', text)
     for line in lines:
         tokens = re.split(' ', line)
@@ -70,9 +71,22 @@ def __get_pid_in_text(text, pname):
         for t in tokens:
             if len(t) != 0:
                 filtered_tokens.append(t)
-        if len(filtered_tokens) == 9 and filtered_tokens[8] == pname and is_number(filtered_tokens[1]):
+        if len(filtered_tokens) == 9 and filtered_tokens[8].lower() == pname and is_number(filtered_tokens[1]):
             return int(filtered_tokens[1])
     return -1
+
+
+def __get_proc_name_in_text(text, pid):
+    lines = re.split('\r\n', text)
+    for line in lines:
+        tokens = re.split(' ', line)
+        filtered_tokens = []
+        for t in tokens:
+            if len(t) != 0:
+                filtered_tokens.append(t)
+        if len(filtered_tokens) == 9 and is_number(filtered_tokens[1]) and int(filtered_tokens[1]) == pid:
+            return filtered_tokens[8]
+    return None
 
 
 def get_pid_by_adb_shell(device_id, name, wait_time_in_sec=1):
@@ -89,6 +103,22 @@ def get_pid_by_adb_shell(device_id, name, wait_time_in_sec=1):
             return pid
         time.sleep(1)
     return pid
+
+
+def get_proc_name_by_pid(device_id, pid, wait_time_in_sec=1):
+    proc_name = None
+    for i in range(wait_time_in_sec):
+        cmd = f"adb -s {device_id} shell ps"
+        ret = exec_cmd(cmd, 2)
+        if ret is None:
+            print("请重新拔插手机上的usb线")
+            sys.exit(-1)
+
+        proc_name = __get_proc_name_in_text(ret, pid)
+        if proc_name:
+            break
+        time.sleep(1)
+    return proc_name
 
 
 def get_app_version(device_id, name):

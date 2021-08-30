@@ -591,12 +591,13 @@ class Scriptor:
                     headers = data['headers'].strip().replace("\n", ", ")
                     param_infos.append(f'  {clr_bright_cyan("headers")}: {headers}')
                 elif key == 'body':
-                    if isinstance(data[key], dict):
-                        if len(data[key].keys()) > 0:
-                            param_infos.append(f'  {clr_bright_cyan(key)}:')
-                            param_infos += Scriptor.__prepare_fields_msg(data[key], None, "    └")
-                    elif isinstance(data[key], str) and len(data[key]) > 0:
-                        param_infos.append(f'  {clr_bright_cyan(key)}: {data[key].strip()}')
+                    class_name = f'[{data[key]["class"]}]'
+                    if isinstance(data[key]["data"], dict):
+                        if len(data[key]["data"].keys()) > 0:
+                            param_infos.append(f'  {clr_bright_cyan(key)}: {clr_yellow(class_name)}')
+                            param_infos += Scriptor.__prepare_fields_msg(data[key]["data"], None, "    └")
+                    elif isinstance(data[key]["data"], str) and len(data[key]["data"]) > 0:
+                        param_infos.append(f'  {clr_bright_cyan(key)}: {clr_yellow(class_name)} {data[key]["data"].strip()}')
                 else:
                     if isinstance(data[key], str) and len(data[key]) > 0:
                         param_infos.append(f'  {clr_bright_cyan(key)}: {data[key].strip()}')

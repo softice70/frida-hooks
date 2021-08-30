@@ -692,9 +692,18 @@ class FridaAgent:
             matching = [proc for proc in app_list if fnmatch.fnmatchcase(proc.identifier, app) or fnmatch.fnmatchcase(proc.name.lower(), app_lc)]
         if len(matching) == 1:
             return matching[0].identifier, matching[0].pid
-        else:
-            print(clr_red(f'app: \"{app}\" not found!'))
-            return None, -1
+        elif len(matching) == 0:
+            if is_number(app):
+                pid = int(app)
+                proc_name = get_proc_name_by_pid(self._device.id, pid)
+                if proc_name:
+                    return proc_name, pid
+            else:
+                pid = get_pid_by_adb_shell(self._device.id, app)
+                return app, pid
+
+        print(clr_red(f'app: \"{app}\" not found!'))
+        return None, -1
 
     def _get_process_id(self, app):
         matching = [proc for proc in self._device.enumerate_applications() if fnmatch.fnmatchcase(proc.identifier, app)]

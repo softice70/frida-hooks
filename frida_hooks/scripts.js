@@ -539,9 +539,11 @@ function gen_request_data(request){
             var method = request.method();
             var headers = request.headers().toString();
             var requestBody = request.body();
+            var body_class = '' ;
             var body = '';
             if(method == 'POST' && requestBody){
                 try{
+                    body_class = get_real_class_name(requestBody);
                     var Buffer = java_use_safe("okio.Buffer");
                     var ByteString = null;
                     if(Buffer == null){
@@ -570,7 +572,7 @@ function gen_request_data(request){
                 }
             }
             data = {type: "request", request: request.toString(), url: url,
-                    method: method, headers: headers, body: body};
+                    method: method, headers: headers, body: {class: body_class, data: body}};
         } catch (error) {
             console.log(clr_red("error in parsing request: "), error);
             data = {type: "request", request: request.toString()};
