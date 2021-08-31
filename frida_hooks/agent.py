@@ -198,6 +198,9 @@ class FridaAgent:
         else:
             return ''
 
+    def is_script_ok(self):
+        return self._script and self._script.is_destroyed is False
+
     @staticmethod
     def list_device():
         devices = frida.get_device_manager().enumerate_devices()
