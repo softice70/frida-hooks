@@ -367,9 +367,10 @@ class FridaAgent:
                 print(f'{scripts_map[key]["id"]:>3}[{clr_bright_green("✗")}] {clr_dark_gray(key)}')
 
     @staticmethod
-    def _so_fix(source, output, base):
+    def _so_fix(source, output, base, is_32bit):
         if platform.system().lower() == 'windows':
-            fixer_file = os.path.join(dirname(abspath(__file__)), 'bin\\SoFixer-Windows-64.exe')
+            bit_str = '32' if is_32bit else '64'
+            fixer_file = os.path.join(dirname(abspath(__file__)), f'bin\\SoFixer-Windows-{bit_str}.exe')
             cmd = f'{fixer_file} -m {base} -s {source} -o {output}'
             ret = exec_cmd(cmd, 20)
             print_screen(ret, is_show_prompt=False)
@@ -729,7 +730,8 @@ class FridaAgent:
                 with open(tmp_so_path, 'wb') as out:
                     out.write(bs)
                 fixed_so_path = f'{self._app_package}/{module_name}'
-                if self._so_fix(tmp_so_path, fixed_so_path, info['base']):
+                is_32bit_so = (bs[4] == 1)
+                if self._so_fix(tmp_so_path, fixed_so_path, info['base'], is_32bit_so):
                     os.remove(tmp_so_path)
                 else:
                     os.rename(tmp_so_path, fixed_so_path)

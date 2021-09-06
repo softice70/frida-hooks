@@ -84,11 +84,19 @@ class Scriptor:
          'help': 'dump dex files, please use --spawn to start the frida-hooks'},
         {'func': 'save_apk', 'persistent': False, 'is_option': True,
          'help': 'save APK file to local directory'},
+        {'api': 'dumpSignatures', 'func': 'dump_signatures', 'persistent': False, 'is_option': True,
+         'help': 'dump the signatures of the apk'},
         {'api': 'dumpSoMemory', 'func': 'dump_so_memory', 'persistent': False, 'is_option': True,
          'help': 'dump the memory of the module, Parameters: --module, --offset, --length',
          'params': [
              {"name": "module", "type": "string"},
              {"name": "offset", "type": "int"},
+             {"name": "length", "type": "int"}
+         ]},
+        {'api': 'dumpMemory', 'func': 'dump_memory', 'persistent': False, 'is_option': True,
+         'help': 'dump the memory',
+         'params': [
+             {"name": "addr", "type": "string"},
              {"name": "length", "type": "int"}
          ]},
         {'func': 'search_app', 'persistent': False, 'is_option': True,

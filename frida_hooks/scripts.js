@@ -155,6 +155,19 @@ function get_methods_safe(class_name){
     return methods;
 }
 
+function has_method(obj, method) {
+    let class_name = get_real_class_name(obj);
+    let method_array = get_methods_safe(class_name);
+    for (let i = 0; i < method_array.length; i++) {
+        let cur_method = method_array[i]; //当前方法
+        let str_method_name = cur_method.getName(); //当前方法名
+        if(str_method_name == method){
+            return true;
+        }
+    }
+    return false;
+}
+
 function get_application_context() {
   const ActivityThread = Java.use("android.app.ActivityThread");
   return ActivityThread.currentApplication().getApplicationContext();
@@ -585,40 +598,83 @@ function gen_request_data(request){
     }
 }
 
+function un_gzip(bytes){
+    let ByteArrayInputStream = Java.use('java.io.ByteArrayInputStream');
+    const ByteArrayOutputStream = Java.use('java.io.ByteArrayOutputStream');
+    const GZIPInputStream = Java.use('java.util.zip.GZIPInputStream');
+
+    let input = ByteArrayInputStream.$new(bytes);
+    let out = ByteArrayOutputStream.$new();
+    let byte_temp = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    try {
+        let ungzip = GZIPInputStream.$new(input);
+        let buffer = Java.array('B', byte_temp);
+        let n;
+        while ((n = ungzip.read(buffer, 0, buffer.length)) >= 0) {
+            out.write(buffer, 0, n);
+        }
+    } catch (e) {
+        console.error(e);
+    }
+    return out.toString();
+}
+
 function gen_response_data(response){
     var class_name = get_real_class_name(response);
+    let data = {type:"response",response:(response!=null?response.toString():"null"), class: class_name};
     if (class_name == "okhttp3.Response" || class_name == "com.android.okhttp.Response") {
-        let data = null;
         try {
-            var responseBody = response.body();
-            var body = '';
-            if(responseBody != null){
-                body = responseBody.string();
-                if(body.length == 0 && responseBody.contentLength() > 0){
-                    var ContentType = response.headers().get("Content-Type");
-                    if (ContentType.indexOf("video") == -1 && ContentType.indexOf("application/zip") != 0 && ContentType.indexOf("application") == 0) {
-                        var source = responseBody.source();
-                        try {
-                            body = source.readUtf8();
-                        } catch (error) {
-                            try {
-                                body = source.readByteString().hex();
-                            } catch (error) {
-                                console.log("error 4:", error);
+            let headers = response.headers();
+            data['headers'] = headers.toString();
+            let body = '';
+            if(has_method(response, 'body')){
+                var responseBody = response.body();
+                if(responseBody != null){
+                    if(has_method(responseBody, 'string')){
+                        body = responseBody.string();
+                    }
+                    if(body.length == 0 && has_method(responseBody, 'contentLength')
+                            && responseBody.contentLength() > 0 && has_method(headers, 'get')){
+                        var contentType = headers.get("Content-Type");
+                        if (contentType && contentType.indexOf("video") == -1
+                                && contentType.indexOf("application/zip") != 0
+                                && contentType.indexOf("application") == 0
+                                && has_method(responseBody, 'source')) {
+                            var source = responseBody.source();
+                            if(source){
+                                let encoding = headers.get("Content-Encoding");
+                                if((!encoding || encoding != 'gzip') && has_method(source, 'readUtf8')){
+                                    body = source.readUtf8();
+                                }else if(has_method(source, 'readByteString')){
+                                    let byte_string = source.readByteString();
+                                    if(byte_string){
+                                        if(encoding && encoding == 'gzip'){
+                                            body = un_gzip(byte_string.toByteArray());
+                                        }else{
+                                            body = byte_string.hex();
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
                 }
             }
-            data = {type:"response", response:response.toString(), headers:response.headers().toString(), body:body};
+            if(body != ''){
+                data['body'] = body;
+            }
         } catch (error) {
-            console.log("error 3:", error);
+            // console.log("error 2:", error);
         }
-        return data;
-    }else{
-        return {type:"response",response:(response!=null?response.toString():"null"),
-                class: class_name};
     }
+    return data;
 }
 
 function hook_func_frame(class_name, method_name, func){
@@ -856,6 +912,15 @@ function dump_so_memory(module_name, offset, length){
     return wrap_java_perform(() => {
         var libc = Module.findBaseAddress(module_name);
         var data = hexdump(libc, {offset: offset, length: length, header: true, ansi: true});
+        send_msg(data);
+        return data;
+    });
+}
+
+function dump_memory(addr_str, length){
+    return wrap_java_perform(() => {
+        var addr = new NativePointer(addr_str);
+        var data = hexdump(addr, {offset: 0, length: length, header: true, ansi: true});
         send_msg(data);
         return data;
     });
@@ -2207,5 +2272,21 @@ function hook_cert_file(){
             return result;
         }
         console.log(clr_cyan("Certificate file sniffer") + " is running...");
+    });
+}
+
+function dump_signatures(){
+    return wrap_java_perform(() => {
+        const context = get_application_context();
+        const PackageManager = java_use_safe("android.app.ApplicationPackageManager");
+        const apk_name = context.getPackageName();
+        let signatures = context.getPackageManager().getPackageInfo(apk_name, PackageManager.GET_SIGNATURES.value).signatures.value;
+        console.log("number of signatures: ", clr_cyan(""+signatures.length));
+        for(let i = 0; i < signatures.length; i++) {
+            let byte_array = signatures[i].toByteArray();
+            console.log("signature [" + clr_yellow(""+i) + "]: " + clr_cyan(""+byte_array.length));
+            console.log(byte_array);
+            console.log(signatures[i].toCharsString());
+        }
     });
 }
