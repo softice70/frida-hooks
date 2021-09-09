@@ -210,6 +210,19 @@ class FridaAgent:
                 print(f'id: {clr_cyan(device.id)}\tname:{clr_yellow(device.name)}')
         return devices
 
+    @staticmethod
+    def list_device_by_adb():
+        devices = []
+        cmd = "adb devices"
+        ret = exec_cmd(cmd, 10)
+        if ret:
+            lines = re.split('\r\n', ret)
+            for line in lines:
+                parts = re.split('\t', line)
+                if len(parts) == 2:
+                    devices.append({"id": parts[0], "status": parts[1]})
+        return devices
+
     def list_app(self, app_name=None, check_frida_server=True):
         if not check_frida_server or self.start_frida_server() > 0:
             app_list = self._device.enumerate_applications()
@@ -269,6 +282,9 @@ class FridaAgent:
 
     def get_rpc_exports(self):
         return self._script.exports if self._script else None
+
+    def get_current_pid(self):
+        return self._target_pid
 
     @staticmethod
     def _init_parser(parser):
@@ -571,12 +587,14 @@ class FridaAgent:
         return ret
 
     def _exec_script_cmd_after_load(self):
+        self._script.exports.start_tls_key_logger()
         self._script.exports.hook_cert_file()
         for key in self._scripts_map.keys():
             self.exec_one_script(self._scripts_map[key])
 
     def _exec_script_in_spawn_mode(self):
         self._script.exports.hook_lib_art()
+        self._script.exports.start_tls_key_logger()
 
     def _run_console(self):
         while self._keep_running:

@@ -144,3 +144,30 @@ def set_exit_handler(sig, func):
     signal.signal(sig, func)
 
 
+def list_device_by_adb():
+    devices = []
+    cmd = "adb devices"
+    ret = exec_cmd(cmd, 10)
+    if ret:
+        lines = re.split('\r\n', ret)
+        for line in lines:
+            parts = re.split('\t', line)
+            if len(parts) == 2:
+                devices.append({"id": parts[0], "status": parts[1]})
+    return devices
+
+
+def reconnect_offline_devices(devices=None):
+    devices = list_device_by_adb() if devices is None else devices
+    for dev_info in devices:
+        if dev_info["status"] != 'device':
+            cmd = f'adb -s {dev_info["id"]} reconnect offline"'
+            ret = exec_cmd(cmd, 5)
+            print(f'{cmd}\n{ret}')
+
+
+def kill_process(device_id, pid):
+    cmd = f'adb -s {device_id} shell su -c "kill -9 {pid}"'
+    ret = exec_cmd(cmd, 10)
+    print(f'{cmd}\n{ret}')
+

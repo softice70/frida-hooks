@@ -66,6 +66,8 @@ const ACTION_VIEW = "android.intent.action.VIEW";
 
 var dex_list = [];
 var native_list = [];
+var tls_key_logger_started = false;
+var tls_key_list = [];
 
 function set_color_mode(is_color_mode){
     _is_color_mode = is_color_mode
@@ -2254,6 +2256,22 @@ function bypass_no_proxy(){
     bypass_no_proxy_core('okhttp3.RealCall', 'execute');
 }
 
+function dump_signatures(){
+    return wrap_java_perform(() => {
+        const context = get_application_context();
+        const PackageManager = java_use_safe("android.app.ApplicationPackageManager");
+        const apk_name = context.getPackageName();
+        let signatures = context.getPackageManager().getPackageInfo(apk_name, PackageManager.GET_SIGNATURES.value).signatures.value;
+        console.log("number of signatures: ", clr_cyan(""+signatures.length));
+        for(let i = 0; i < signatures.length; i++) {
+            let byte_array = signatures[i].toByteArray();
+            console.log("signature [" + clr_yellow(""+i) + "]: " + clr_cyan(""+byte_array.length));
+            console.log(byte_array);
+            console.log(signatures[i].toCharsString());
+        }
+    });
+}
+
 function hook_cert_file(){
     return wrap_java_perform(() => {
         Java.use("java.io.File").$init.overload('java.io.File', 'java.lang.String').implementation = function (file, cert) {
@@ -2275,18 +2293,31 @@ function hook_cert_file(){
     });
 }
 
-function dump_signatures(){
-    return wrap_java_perform(() => {
-        const context = get_application_context();
-        const PackageManager = java_use_safe("android.app.ApplicationPackageManager");
-        const apk_name = context.getPackageName();
-        let signatures = context.getPackageManager().getPackageInfo(apk_name, PackageManager.GET_SIGNATURES.value).signatures.value;
-        console.log("number of signatures: ", clr_cyan(""+signatures.length));
-        for(let i = 0; i < signatures.length; i++) {
-            let byte_array = signatures[i].toByteArray();
-            console.log("signature [" + clr_yellow(""+i) + "]: " + clr_cyan(""+byte_array.length));
-            console.log(byte_array);
-            console.log(signatures[i].toCharsString());
+function start_tls_key_logger() {
+    if(!tls_key_logger_started){
+        const SSL_CTX_new = Module.findExportByName('libssl.so', 'SSL_CTX_new');
+        const SSL_CTX_set_keylog_callback = Module.findExportByName('libssl.so', 'SSL_CTX_set_keylog_callback');
+        function keyLogger(ssl, line) {
+            tls_key_list.push(new NativePointer(line).readCString())
         }
-    });
+        const keyLogCallback = new NativeCallback(keyLogger, 'void', ['pointer', 'pointer']);
+
+        Interceptor.attach(SSL_CTX_new, {
+            onLeave: function(retval) {
+                const ssl = new NativePointer(retval);
+                const SSL_CTX_set_keylog_callbackFn = new NativeFunction(SSL_CTX_set_keylog_callback, 'void', ['pointer', 'pointer']);
+                SSL_CTX_set_keylog_callbackFn(ssl, keyLogCallback);
+            }
+        });
+        tls_key_logger_started = true;
+        console.log(clr_cyan("TLS key logger") + " is running...");
+    }
+}
+
+function list_tls_keys(){
+    console.log('TLS keys: [' + clr_cyan(""+tls_key_list.length) + ']');
+    for (let i = 0; i < tls_key_list.length; i++) {
+        let parts = tls_key_list[i].split(' ');
+        console.log(clr_yellow(parts[0]) + ' ' + clr_purple(parts[1]) + ' ' + clr_purple(parts[2]));
+    }
 }

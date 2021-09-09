@@ -37,6 +37,8 @@ class Scriptor:
          'params': [{"name": "module", "type": "string"}]},
         {'api': 'listRegisterNatives', 'func': 'list_register_natives', 'persistent': False, 'is_option': True,
          'help': 'list the register natives function, please use --spawn to start the frida-hooks'},
+        {'api': 'listTlsKeys', 'func': 'list_tls_keys', 'persistent': False, 'is_option': True,
+         'help': 'list the TLS keys tracked, please use --spawn to start the frida-hooks'},
         {'api': 'listThread', 'func': 'list_thread', 'persistent': False, 'is_option': False, 'help': 'list thread'},
         {'api': 'hookFunc', 'func': 'hook_func', 'persistent': True, 'is_option': True,
          'help': 'hook the method of one class',
@@ -140,6 +142,7 @@ class Scriptor:
         {'api': 'scanDex', 'func': 'scan_dex', 'persistent': False, 'is_option': False},
         {'api': 'hookLibArt', 'func': 'hook_lib_art', 'persistent': False, 'is_option': False},
         {'api': 'hookCertFile', 'func': 'hook_cert_file', 'persistent': False, 'is_option': False},
+        {'api': 'startTlsKeyLogger', 'func': 'start_tls_key_logger', 'persistent': False, 'is_option': False},
         {'api': 'findSo', 'func': 'find_so', 'persistent': False, 'is_option': False},
         {'api': 'setColorMode', 'func': 'set_color_mode', 'persistent': False, 'is_option': False},
     ]
