@@ -123,7 +123,7 @@ class FridaAgent:
                     self.unload_script()
         except Exception as e:
             print(f'run:{e}')
-            self._print_error_script(e)
+            self.print_error_script(e)
         self.exit()
 
     def exec_one_script(self, script):
@@ -285,6 +285,12 @@ class FridaAgent:
 
     def get_current_pid(self):
         return self._target_pid
+
+    def print_error_script(self, e):
+        if hasattr(e, 'args') and isinstance(e.args, tuple) and len(e.args) > 0:
+            matches = re.search(r'^script\(line (\d*)\): SyntaxError:', e.args[0])
+            if matches is not None:
+                self._print_script(matches.group(1))
 
     @staticmethod
     def _init_parser(parser):
@@ -817,12 +823,6 @@ class FridaAgent:
             print(f'app:{clr_cyan(self._app_package)} version:{clr_cyan(app_ver)}')
         else:
             print(Scriptor.get_cmd_usage('app_version'))
-
-    def _print_error_script(self, e):
-        if hasattr(e, 'args') and isinstance(e.args, tuple) and len(e.args) > 0:
-            matches = re.search(r'^script\(line (\d*)\): SyntaxError:', e.args[0])
-            if matches is not None:
-                self._print_script(matches.group(1))
 
     def _get_apk_path(self, package):
         cmd = f'adb -s {self._device.id} shell pm list packages -f'
