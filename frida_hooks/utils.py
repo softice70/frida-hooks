@@ -31,7 +31,9 @@ def print_prompt():
     sys.stdout.write(f'\r> ')
 
 
-def exec_cmd(cmd, timeout_in_sec=0, is_show_msg=True):
+def exec_cmd(cmd, timeout_in_sec=0, is_show_msg=False):
+    if is_show_msg:
+        print(f'execute: "{cmd}"')
     p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE)
 
     def kill_process():
@@ -73,7 +75,7 @@ def __get_pid_in_text(text, pname):
                 filtered_tokens.append(t)
         if len(filtered_tokens) == 9 and filtered_tokens[8].lower() == pname and is_number(filtered_tokens[1]):
             return int(filtered_tokens[1])
-    return -1
+    return 0
 
 
 def __get_proc_name_in_text(text, pid):
@@ -90,7 +92,7 @@ def __get_proc_name_in_text(text, pid):
 
 
 def get_pid_by_adb_shell(device_id, name, wait_time_in_sec=1):
-    pid = -1
+    pid = 0
     for i in range(wait_time_in_sec):
         cmd = f"adb -s {device_id} shell ps"
         ret = exec_cmd(cmd, 2)
@@ -146,14 +148,15 @@ def set_exit_handler(sig, func):
 
 def list_device_by_adb():
     devices = []
-    cmd = "adb devices"
+    cmd = "adb devices -l"
     ret = exec_cmd(cmd, 10)
     if ret:
         lines = re.split('\r\n', ret)
-        for line in lines:
-            parts = re.split('\t', line)
-            if len(parts) == 2:
-                devices.append({"id": parts[0], "status": parts[1]})
+        new_lines = [i for i in lines if i != '']
+        for line in new_lines[1:]:
+            parts = re.split(' ', line)
+            new_parts = [i for i in parts if i != '']
+            devices.append({"id": new_parts[0], "status": new_parts[1], "name": new_parts[2].split(":")[1]})
     return devices
 
 
@@ -166,8 +169,11 @@ def reconnect_offline_devices(devices=None):
             print(f'{cmd}\n{ret}')
 
 
-def kill_process(device_id, pid):
-    cmd = f'adb -s {device_id} shell su -c "kill -9 {pid}"'
-    ret = exec_cmd(cmd, 10)
-    print(f'{cmd}\n{ret}')
+def kill_process(device_id, pid, force=True):
+    if pid > 0:
+        su_str = " " if len(device_id.split('.')) == 4 else " su -c "
+        sig = ' -9 ' if force else ' '
+        cmd = f'adb -s {device_id} shell{su_str}"kill{sig}{pid}"'
+        ret = exec_cmd(cmd, 10)
+        print(f'{cmd}\n{ret}')
 

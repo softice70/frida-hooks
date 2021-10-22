@@ -24,6 +24,7 @@ class FridaAgent:
     def __init__(self, parser=None):
         self._parser = parser
         self._device = None
+        self._frida_svr_pid = 0
         self._session = None
         self._script = None
         self._script_src = None
@@ -76,10 +77,13 @@ class FridaAgent:
         if self._script and self._session:
             self._script.unload()
 
-    def start_app(self, app_name, is_suspend=False):
+    def start_app(self, app_name, is_suspend=False, is_restart=False):
         self._app_package = app_name
         if self.start_frida_server() > 0:
             self._app_package, pid = self._confirm_package_pid(app_name)
+            if is_restart and pid > 0:
+                kill_process(self._device.id, pid)
+                pid = 0
             if not is_suspend:
                 self._target_pid = pid
                 if self._target_pid > 0:
@@ -168,26 +172,27 @@ class FridaAgent:
         else:
             self.__start_frida_server()
             sid = get_pid_by_adb_shell(self._device.id, FridaAgent._frida_server_path, 10)
-            if sid < 0:
+            if sid <= 0:
                 print(f"error: frida server {FridaAgent._frida_server_path} failed to start")
             else:
                 print(f'{FridaAgent._frida_server_path}[pid:{clr_cyan(sid)}] is running...')
+                self._frida_svr_pid = sid
             return sid
 
     def stop_frida_server(self):
         name = re.split('/', FridaAgent._frida_server_path)[-1]
         frida_server_pid = get_pid_by_adb_shell(self._device.id, FridaAgent._frida_server_path)
-        if frida_server_pid < 0:
+        if frida_server_pid <= 0:
             print(f'{name} is not running')
         else:
-            cmd = f'adb -s {self._device.id} shell su -c "kill -9 {frida_server_pid}"'
-            exec_cmd(cmd, 10)
+            kill_process(self._device.id, frida_server_pid, False)
+            self._frida_svr_pid = 0
             print(f'{name}[pid:{frida_server_pid}] is stop')
 
     def show_frida_server_status(self, wait_time_in_sec=1):
         name = re.split('/', FridaAgent._frida_server_path)[-1]
         frida_server_pid = get_pid_by_adb_shell(self._device.id, FridaAgent._frida_server_path, wait_time_in_sec)
-        if frida_server_pid < 0:
+        if frida_server_pid <= 0:
             print(f'{name} is not running')
         else:
             print(f'{name}[pid:{clr_cyan(frida_server_pid)}] is running...')
@@ -257,11 +262,12 @@ class FridaAgent:
             identifier = app_info["identifier"]
             apk_path = self._get_apk_path(identifier)
             if apk_path:
-                cmd = f'adb -s {self._device.id} shell su -c "cp {apk_path} /sdcard/{identifier}.apk"'
+                su_str = " " if len(self._device.id.split('.')) == 4 else " su -c "
+                cmd = f'adb -s {self._device.id} shell{su_str}"cp {apk_path} /sdcard/{identifier}.apk"'
                 exec_cmd(cmd, 30)
                 cmd = f'adb -s {self._device.id} pull /sdcard/{identifier}.apk"'
                 exec_cmd(cmd, 30)
-                cmd = f'adb -s {self._device.id} shell su -c "rm -f /sdcard/{identifier}.apk"'
+                cmd = f'adb -s {self._device.id} shell{su_str}"rm -f /sdcard/{identifier}.apk"'
                 exec_cmd(cmd, 30)
                 if os.path.exists(f'{identifier}.apk'):
                     print(f'apk file saved in {clr_blue(abspath(identifier + ".apk"))}.')
@@ -283,8 +289,11 @@ class FridaAgent:
     def get_rpc_exports(self):
         return self._script.exports if self._script else None
 
-    def get_current_pid(self):
-        return self._target_pid
+    def get_current_pid(self, force_update=False):
+        if not force_update:
+            return self._target_pid
+        else:
+            return get_pid_by_adb_shell(self._device.id, self._app_package)
 
     def print_error_script(self, e):
         if hasattr(e, 'args') and isinstance(e.args, tuple) and len(e.args) > 0:
@@ -361,7 +370,8 @@ class FridaAgent:
             except OSError:
                 pass  # Swallow the error
 
-        cmd = f'adb -s {self._device.id} shell su -c "{FridaAgent._frida_server_path} &"'
+        su_str = " " if len(self._device.id.split('.')) == 4 else " su -c "
+        cmd = f'adb -s {self._device.id} shell{su_str}"{FridaAgent._frida_server_path} &"'
         p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE)
         timer = Timer(3, kill_process)
         timer.start()
