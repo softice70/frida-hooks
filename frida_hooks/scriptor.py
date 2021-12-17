@@ -3,6 +3,7 @@
 
 import json
 import os
+import base64
 from os.path import abspath, dirname
 import importlib
 from optparse import OptionGroup
@@ -23,8 +24,10 @@ class Scriptor:
          'help': 'list classes of Java'},
         {'api': 'listClassLoaders', 'func': 'list_class_loaders', 'persistent': False, 'is_option': True,
          'help': 'list class loaders'},
+        {'api': 'listActivityClasses', 'func': 'list_activity_classes', 'is_option': True, 'persistent': False,
+         'help': 'list the class of activities'},
         {'api': 'listActivities', 'func': 'list_activities', 'is_option': True, 'persistent': False,
-         'help': 'list activities'},
+         'help': 'list the instance of activities'},
         {'api': 'listCurrentActivity', 'func': 'list_current_activity', 'is_option': True, 'persistent': False,
          'help': 'list current activity and fragment'},
         {'api': 'listServices', 'func': 'list_services', 'is_option': True, 'persistent': False,
@@ -57,7 +60,7 @@ class Scriptor:
          'help': 'hook all functions of some module',
          'params': [{"name": "module", "type": "string"}]},
         {'api': 'hookHttpExecute', 'func': 'hook_http_execute', 'persistent': True, 'is_option': True,
-         'help': 'batch execute hook_http_url_connection, hook_okhttp_execute and hook_okhttp3_execute'},
+         'help': 'batch execute hook_http_url_connection, hook_okhttp_execute, hook_okhttp3_execute and hook_okhttp3_enqueue'},
         {'api': 'hookHttpUrlConnection', 'func': 'hook_http_url_connection','is_option': True,
          'help': 'hook com.android.okhttp.internal.huc.HttpURLConnectionImpl.execute()', 'persistent': False},
         {'api': 'hookOkhttpExecute', 'func': 'hook_okhttp_execute', 'persistent': True, 'is_option': True,
@@ -66,6 +69,10 @@ class Scriptor:
          'help': 'hook okHttp3.RealCall.execute(), suggest to use when viewing request'},
         {'api': 'hookOkhttp3Callserver', 'func': 'hook_okhttp3_CallServer', 'persistent': True, 'is_option': True,
          'help': 'hook okhttp3.CallServerInterceptor, suggest to use when viewing response'},
+        {'api': 'hookOkhttpEnqueue', 'func': 'hook_okhttp_enqueue', 'persistent': True, 'is_option': True,
+         'help': 'hook com.android.okHttp.Call.enqueue(), suggest to use when viewing request'},
+        {'api': 'hookOkhttp3Enqueue', 'func': 'hook_okhttp3_enqueue', 'persistent': True, 'is_option': True,
+         'help': 'hook okHttp3.RealCall.enqueue(), suggest to use when viewing request'},
         {'api': 'hookIntercept', 'func': 'hook_intercept', 'persistent': True, 'is_option': True,
          'help': 'hook the intercept() of some okhttp3 interceptor',
          'params': [{"name": "class", "type": "string"}]},
@@ -78,7 +85,10 @@ class Scriptor:
          'help': 'bypass the Proxy.NO_PROXY setting'},
         {'api': 'dumpClass', 'func': 'dump_class', 'persistent': False, 'is_option': True,
          'help': 'dump the class',
-         'params': [{"name": "class", "type": "string"}]},
+         'params': [
+             {"name": "class", "type": "string"},
+             {"name": "super", "type": "bool", "isOptional": True}
+         ]},
         {'func': 'dump_so', 'persistent': False, 'is_option': True,
          'help': 'dump so from memory to file',
          'params': [{"name": "module", "type": "string"}]},
@@ -134,9 +144,26 @@ class Scriptor:
         {'api': 'startActivity', 'func': 'start_activity', 'persistent': False, 'is_option': True,
          'help': 'start the specified Activity',
          'params': [{"name": "activity", "type": "string"}]},
+        {'api': 'moveToForeground', 'func': 'move_to_foreground', 'persistent': False, 'is_option': True,
+         'help': 'move the app to foreground',
+         'params': [{"name": "app", "type": "string"}]},
         {'func': 'app_version', 'persistent': False, 'is_option': True,
          'help': 'show the version of specified app',
          'params': [{"name": "app", "type": "string", "isOptional": True}]},
+        {'api': 'okhttp3Get', 'func': 'okhttp3_get', 'persistent': False, 'is_option': False,
+         'help': '执行okhttp3的get命令',
+         'params': [
+             {"name": "url", "type": "string"},
+             {"name": "headers", "type": "string"}
+         ]},
+        {'api': 'okhttp3Post', 'func': 'okhttp3_post', 'persistent': False, 'is_option': False,
+         'help': '执行okhttp3的post命令',
+         'params': [
+             {"name": "url", "type": "string"},
+             {"name": "headers", "type": "string"},
+             {"name": "mediatype", "type": "string"},
+             {"name": "body", "type": "string"}
+         ]},
         {'api': 'searchInMemory', 'func': 'search_in_memory', 'persistent': False, 'is_option': False},
         {'api': 'memoryDump', 'func': 'memory_dump', 'persistent': False, 'is_option': False},
         {'api': 'scanDex', 'func': 'scan_dex', 'persistent': False, 'is_option': False},
@@ -144,6 +171,7 @@ class Scriptor:
         {'api': 'hookCertFile', 'func': 'hook_cert_file', 'persistent': False, 'is_option': False},
         {'api': 'startTlsKeyLogger', 'func': 'start_tls_key_logger', 'persistent': False, 'is_option': False},
         {'api': 'findSo', 'func': 'find_so', 'persistent': False, 'is_option': False},
+        {'api': 'getCurrentActivity', 'func': 'get_current_activity', 'persistent': False, 'is_option': False},
         {'api': 'setColorMode', 'func': 'set_color_mode', 'persistent': False, 'is_option': False},
     ]
     _frida_cmds = _original_frida_cmds[:]
@@ -198,8 +226,9 @@ class Scriptor:
         print('Options:')
         for item in Scriptor._frida_cmds:
             if "is_option" in item.keys() and item['is_option']:
-                print(clr_bright_cyan(f"  --{item['func']:<30}") + item['help'])
-                print(f"{' ' * 34}{Scriptor._get_cmd_usage(item)}")
+                print(clr_bright_cyan(f"  --{item['func']:<30}") + Scriptor._get_cmd_usage(item))
+                if len(item['help']) > 0:
+                    print(f"{' ' * 34}{item['help']}")
         print('\nParameters:')
         for item in Scriptor._script_params:
             print(clr_bright_cyan(f"  --{item['option_name']:<30}") + item['help'])
@@ -313,17 +342,9 @@ class Scriptor:
         if message['type'] == 'send':
             msg_data = message['payload']
             if isinstance(msg_data, dict):
-                Scriptor._handle_one_message(msg_data)
+                Scriptor.handle_dict_message(msg_data)
             elif isinstance(msg_data, list):
-                if len(msg_data) > 0 and isinstance(msg_data[0], str):
-                    msg_data.sort(key=lambda s: s)
-                for msg in msg_data:
-                    if isinstance(msg, dict):
-                        Scriptor._handle_one_message(msg)
-                    else:
-                        if not Scriptor._is_silence:
-                            print_screen(f'{clr_bright_purple("*")} {msg}', False)
-                        write_log(msg)
+                Scriptor.handle_list_message(msg_data)
             else:
                 if not Scriptor._is_silence:
                     print_screen(msg_data)
@@ -340,7 +361,23 @@ class Scriptor:
         return Scriptor._get_cmd_usage(cmd_def)
 
     @staticmethod
-    def _handle_one_message(msg_data):
+    def handle_list_message(msg_data):
+        if len(msg_data) > 0 and isinstance(msg_data[0], str):
+            msg_data.sort(key=lambda s: s)
+        _underline = "-" * 30
+        id = 1
+        for msg in msg_data:
+            if isinstance(msg, dict):
+                Scriptor.handle_dict_message(msg)
+                print(clr_green(f'{_underline} [part - {id}] {_underline}'))
+            else:
+                if not Scriptor._is_silence:
+                    print_screen(f'{clr_bright_purple("*")} {msg}', False)
+            write_log(msg)
+            id += 1
+
+    @staticmethod
+    def handle_dict_message(msg_data):
         text_to_print = ''
         _underline = "_" * 20
         if 'type' in msg_data.keys():
@@ -359,7 +396,7 @@ class Scriptor:
                 text_to_print = clr_bright_green(f'arguments:[{len(arg_list)}]\n  ') + '\n  '.join(arg_list)
             elif msg_data['type'] == 'arguments':
                 args_before = json.loads(msg_data['before'])
-                args_after = json.loads(msg_data['after'])
+                args_after = json.loads(msg_data['after']) if 'after' in msg_data.keys() else args_before
                 arg_list = []
                 for key in args_before.keys():
                     arg_class = f"\t{args_before[key]['class']}" if len(args_before[key]['class']) > 0 else ''
@@ -409,6 +446,8 @@ class Scriptor:
                 text_to_print = clr_bright_green(f'request:\n') + '\n'.join(Scriptor._parse_request(msg_data))
             elif msg_data['type'] == 'response':
                 text_to_print = clr_bright_green(f'response:\n') + '\n'.join(Scriptor._parse_response(msg_data))
+            elif msg_data['type'] == 'base64':
+                text_to_print = clr_bright_cyan(base64.b64decode(msg_data['data']).decode("utf-8"))
             elif 'data' in msg_data.keys():
                 text_to_print = f'{clr_bright_green(msg_data["type"] + ":")} {clr_purple(msg_data["data"])}'
             else:
@@ -580,7 +619,7 @@ class Scriptor:
                     else:
                         param_in_usage.append(
                             clr_yellow(f"--{param_def['name']}") + clr_bright_purple(f" <{param_def['name']}>"))
-            return f'Usage: {clr_bright_green("run")} {clr_bright_cyan("--" + cmd_def["func"])}' \
+            return f'{clr_brown("Usage")}: {clr_bright_green("run")} {clr_bright_cyan("--" + cmd_def["func"])}' \
                    + f' {" ".join(param_in_usage)}'
 
     @staticmethod

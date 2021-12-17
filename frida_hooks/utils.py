@@ -164,9 +164,12 @@ def reconnect_offline_devices(devices=None):
     devices = list_device_by_adb() if devices is None else devices
     for dev_info in devices:
         if dev_info["status"] != 'device':
-            cmd = f'adb -s {dev_info["id"]} reconnect offline"'
-            ret = exec_cmd(cmd, 5)
-            print(f'{cmd}\n{ret}')
+            try:
+                cmd = f'adb -s {dev_info["id"]} reconnect offline"'
+                ret = exec_cmd(cmd, 5)
+                print(f'{cmd}\n{ret}')
+            except Exception as e:
+                print(e)
 
 
 def kill_process(device_id, pid, force=True):

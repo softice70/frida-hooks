@@ -295,6 +295,9 @@ class FridaAgent:
         else:
             return get_pid_by_adb_shell(self._device.id, self._app_package)
 
+    def move_to_foreground(self):
+        self._script.exports.move_to_foreground(self._app_package)
+
     def print_error_script(self, e):
         if hasattr(e, 'args') and isinstance(e.args, tuple) and len(e.args) > 0:
             matches = re.search(r'^script\(line (\d*)\): SyntaxError:', e.args[0])
@@ -311,8 +314,8 @@ class FridaAgent:
             running_group = OptionGroup(parser, 'Running Options')
             running_group.add_option("-S", "--spawn", action="store_true", dest="is_suspend", default=False,
                                      help='spawn mode of Frida, that suspend app during startup')
-            running_group.add_option("-i", "--device_id", action="store", type="string", dest="device_id", default='',
-                                     help='attach the specified device')
+            running_group.add_option("-D", "--device", action="store", type="string", dest="device_id", default='',
+                                     help='connect to device with the given ID')
             running_group.add_option("-m", "--monochrome", action="store_true", dest="monochrome", default=False,
                                      help='set to monochrome mode')
             running_group.add_option("-h", "--host", action="store", type="string", dest="host", default="127.0.0.1",
@@ -371,7 +374,7 @@ class FridaAgent:
                 pass  # Swallow the error
 
         su_str = " " if len(self._device.id.split('.')) == 4 else " su -c "
-        cmd = f'adb -s {self._device.id} shell{su_str}"{FridaAgent._frida_server_path} &"'
+        cmd = f'adb -s {self._device.id} shell{su_str}"{FridaAgent._frida_server_path} -D -d tmp.frdsvr"'
         p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE)
         timer = Timer(3, kill_process)
         timer.start()
@@ -558,7 +561,7 @@ class FridaAgent:
                         if self._scripts_map[k]["id"] == int(key):
                             real_key = k
                             break
-                    if real_key:
+                    if real_key is not None:
                         self._scripts_map[k]['isEnable'] = isEnable
                         ret = True
                 if not ret:
@@ -590,7 +593,7 @@ class FridaAgent:
                         if self._scripts_map[k]["id"] == int(key):
                             real_key = k
                             break
-                    if real_key:
+                    if real_key is not None:
                         del self._scripts_map[real_key]
                         ret = True
                 if not ret:
@@ -694,7 +697,7 @@ class FridaAgent:
                     self._device = device
                     break
         if self._device:
-            print(f'device [{clr_cyan(self._device.id)}] connected.')
+            print(clr_green(f'device [{clr_cyan(self._device.id)}] connected.'))
             sys.path.append(os.getcwd())
         else:
             print(clr_red(f'device ID[{device_id}] not found.'))
