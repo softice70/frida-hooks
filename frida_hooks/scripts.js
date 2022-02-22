@@ -70,6 +70,7 @@ var tls_key_logger_started = false;
 var tls_key_list = [];
 
 var okhttp3_client = null;
+var is_show_cert_file = true;
 
 function set_color_mode(is_color_mode){
     _is_color_mode = is_color_mode
@@ -222,8 +223,10 @@ function trim(str, is_global){
 
 function dump_object(_this, not_send){
     let class_name = get_real_class_name(_this);
-    let fields = get_fields(_this);
-    let value = "" + _this;
+    const clazz = (class_name != '')? Java.use(class_name): null;
+    let that = (clazz != null)? Java.cast(_this, clazz): _this;
+    let fields = get_fields(that);
+    let value = "" + that;
     let ret = {type: "fields", value: value, before: JSON.stringify(fields), class: class_name};
     if(!not_send){
         send(ret);
@@ -322,7 +325,10 @@ function get_fields(_this){
     let fields = {};
     if(_this != undefined && _this != null){
         try {
-            let cls = _this.getClass();
+            let class_name = get_real_class_name(_this);
+            const clazz = (class_name != '')? Java.use(class_name): null;
+            let that = (clazz != null)? Java.cast(_this, clazz): _this;
+            let cls = that.getClass();
             while (cls !== null && !cls.equals(Java.use("java.lang.Object").class)) {
                 var field_array = cls.getDeclaredFields();
                 for (var i = 0; i < field_array.length; i++){
@@ -333,7 +339,7 @@ function get_fields(_this){
                     let key = '' + cls + '.' + field_name;
                     let field_val = 'UNKNOWN'
                     try {
-                        let field_val_obj = field.get(_this);
+                        let field_val_obj = field.get(that);
                         field_val = field_val_obj == null? field_val_obj: field_val_obj.toString();
                         if(is_map(field_class_name)){
                             field_val = dump_map(field_val_obj);
@@ -360,16 +366,19 @@ function get_arguments(arg_list, arg_cnt){
     for (var idx_arg = 0; idx_arg < arg_cnt; idx_arg++) {
         var class_name = '';
         var fields = {};
-        var val = '' + arg_list[idx_arg];
+        let val = '';
         try {
             class_name = get_real_class_name(arg_list[idx_arg]);
+            const clazz = (class_name != '')? Java.use(class_name): null;
+            let cur_arg = (clazz != null)? Java.cast(arg_list[idx_arg], clazz): arg_list[idx_arg];
+            val = '' + cur_arg;
             if(!is_basic_class(class_name)){
-                fields = get_fields(arg_list[idx_arg]);
+                fields = get_fields(cur_arg);
             }
             if(is_map(class_name)){
-                val = dump_map(arg_list[idx_arg]);
+                val = dump_map(cur_arg);
             }else if(is_collection(class_name)){
-                val = dump_collection(arg_list[idx_arg]);
+                val = dump_collection(cur_arg);
             }
         } catch (e) {
         }
@@ -422,8 +431,8 @@ function dump_map(map_obj){
         try {
             const MapClass = Java.use("java.util.Map");
             const EntryClass = Java.use("java.util.Map$Entry");
-            const entry_set = MapClass.entrySet.apply(map_obj).iterator();
-            while (entry_set.hasNext()) {
+            let entry_set = MapClass.entrySet.apply(map_obj).iterator();
+            while (entry_set && entry_set.hasNext()) {
                 const entry = Java.cast(entry_set.next(), EntryClass);
                 const key = entry.getKey();
                 const value = entry.getValue();
@@ -433,7 +442,7 @@ function dump_map(map_obj){
                 result["" + key] = "" + value;
             }
         } catch (e) {
-            console.error(e)
+            console.error('Exception of dump_map(): '+e)
         }
         return result;
     }else{
@@ -452,7 +461,7 @@ function dump_collection(collection_obj){
                 result.push(item);
             });
         } catch (e) {
-            console.error(e)
+            console.error('Exception of dump_collection(): '+e)
         }
         return result;
     }else{
@@ -471,7 +480,7 @@ function dump_set(set_obj){
                 result.push(item);
             }
         } catch (e) {
-            console.error(e)
+            console.error('Exception of dump_set(): '+e)
         }
         return result;
     }else{
@@ -865,20 +874,29 @@ function gen_response_data(response){
 
 function hook_func_frame(class_name, method_name, func){
     return wrap_java_perform(() => {
-        var full_func_name = class_name + '.' + method_name;
         try{
-            var cls = Java.use(class_name);
-            if(cls[method_name] == undefined){
-                console.log('error: ' + full_func_name + ' not found in ' + cls + '!')
-            }else{
-                var n_overload_cnt = cls[method_name].overloads.length;
-                for (var index = 0; index < n_overload_cnt; index++) {
-                    cls[method_name].overloads[index].implementation = func;
-                    console.log(clr_yellow(clr_blink(full_func_name + "() [" + index +  "] is hooked...")));
+            let is_super = false;
+            const ObjectClazz = Java.use("java.lang.Object");
+            let cls = Java.use(class_name);
+            while (cls !== null && (!is_super || !cls.class.equals(ObjectClazz.class))) {
+                if(cls[method_name] != undefined){
+                    let full_func_name = cls.class.getName() + '.' + method_name;
+                    let n_overload_cnt = cls[method_name].overloads.length;
+                    for (let index = 0; index < n_overload_cnt; index++) {
+                        cls[method_name].overloads[index].implementation = func;
+                        console.log(clr_yellow(clr_blink(full_func_name + "() [" + index +  "] is hooked...")));
+                    }
+                    return;
                 }
+                /* 需要再观察
+                let super_cls = cls.class.getSuperclass().getName();
+                cls = Java.use(super_cls);
+                is_super = true; */
+                break;
             }
+            console.log('error: method ' + method_name + '() not found in class ' + class_name + '!')
         }catch(e){
-            console.log(clr_red(full_func_name + '() failed to hook.'))
+            console.log(clr_red(class_name + '.' + method_name + '() failed to hook.'))
         }
     });
 }
@@ -897,9 +915,9 @@ function hook_func(class_name, method_name, validate_func){
                 datas.push({type:"stack", data:get_stack_trace(), timestamp:timestamp, funcName:full_func_name});
                 let args_before = get_arguments(arguments, arguments.length);
                 let fields_before = get_fields(this);
-                let this_value = this.toString();
                 //调用原应用的方法
                 ret = this[method_name].apply(this, arguments);
+                let this_value = '' + this;
                 func_called = true;
                 let args_after = get_arguments(arguments, arguments.length);
                 let fields_after = get_fields(this);
@@ -920,7 +938,7 @@ function hook_func(class_name, method_name, validate_func){
                 send(datas);
             }
         }catch(e){
-            console.error(e);
+            console.error('Exception of hook function ' + full_func_name + ': ' + e);
         }
         if(!func_called){
             return this[method_name].apply(this, arguments);
@@ -1251,32 +1269,30 @@ function dump_class(class_name, dump_super){
         //获取类的所有方法
         const Modifier = Java.use("java.lang.reflect.Modifier");
         const ObjectClazz = Java.use("java.lang.Object");
-        var msgs = [];
-        var cls = Java.use(class_name).class;
+        let msgs = [];
+        let cls = Java.use(class_name);
         let is_super = false;
-        while (cls !== null && !cls.equals(ObjectClazz.class)) {
-            var method_array = get_methods_safe(class_name);
+        while (cls !== null && !cls.class.equals(ObjectClazz.class)) {
+            let cur_class = '' + cls.class.getName();
             if(is_super){
-                msgs.push(clr_bright_green("------------  [")+clr_purple("S")+clr_bright_green("] "+class_name+"  ------------"));
+                msgs.push(clr_bright_green("------------  [")+clr_purple("S")+clr_bright_green("] "+cur_class+"  ------------"));
             }else{
                 msgs.push(clr_bright_green("------------  " + class_name + "  ------------"));
             }
             //获取类的所有字段
-            var fields = []
-            var field_array = cls.class.getDeclaredFields();
-            for (var i = 0; i < field_array.length; i++) {
-                var field = field_array[i]; //当前成员
-                var field_name = field.getName();
-                var field_class = field.getType().getName();
+            let field_array = cls.class.getDeclaredFields();
+            for (let i = 0; i < field_array.length; i++) {
+                let field = field_array[i]; //当前成员
+                let field_name = field.getName();
+                let field_class = field.getType().getName();
                 let modifier = '' + Modifier.toString(field.getModifiers());
                 msgs.push("  "+ clr_cyan(modifier) + " " + clr_blue(field_class) + " " + clr_purple(field_name));
-                fields.push({fieldName: field_name, fieldClass: field_class})
             }
             //hook 类所有方法 （所有重载方法也要hook)
-            var methods = [];
-            for (var i = 0; i < method_array.length; i++) {
-                var cur_method = method_array[i]; //当前方法
-                var str_method_name = cur_method.getName(); //当前方法名
+            let method_array = cls.class.getDeclaredMethods();
+            for (let i = 0; i < method_array.length; i++) {
+                let cur_method = method_array[i]; //当前方法
+                let str_method_name = cur_method.getName(); //当前方法名
                 let modifier = '' + Modifier.toString(cur_method.getModifiers());
                 let str_ret_type = ' ' + cur_method.getReturnType();
                 str_ret_type = str_ret_type.replace(/(class|interface)/g, '')
@@ -1287,17 +1303,16 @@ function dump_class(class_name, dump_super){
                 }
                 msgs.push("  " + clr_cyan(modifier) + clr_yellow(str_ret_type) + " " + clr_bright_purple(str_method_name)
                     + clr_dark_gray("(") + fmt_param_types.join(clr_dark_gray(",")) + clr_dark_gray(")"));
-                methods.push({name: str_method_name, modifier: modifier, returnType: str_ret_type, parameterTypes: str_param_types.join(",")})
             }
             if(dump_super){
-                cls = cls.getSuperclass();
+                let super_cls = cls.class.getSuperclass().getName();
+                cls = Java.use(super_cls);
                 is_super = true;
             }else{
                 break;
             }
         }
         send(msgs.join("\n"));
-        return {className: class_name, fields: fields, methods: methods}
     });
 }
 function list_so(){
@@ -2549,13 +2564,18 @@ function dump_signatures(){
     });
 }
 
+function toggle_cert_file_state(){
+    is_show_cert_file = !is_show_cert_file;
+    console.log(clr_cyan("set certificate file sniffer: ") + is_show_cert_file);
+}
+
 function hook_cert_file(){
     return wrap_java_perform(() => {
         Java.use("java.io.File").$init.overload('java.io.File', 'java.lang.String').implementation = function (file, cert) {
             var result = this.$init(file, cert)
             try{
                 //匹配证书绑定的函数是否在调用链中
-                if (file != undefined && file != null && file.getPath().indexOf("cacert") >= 0) {
+                if (is_show_cert_file && file != undefined && file != null && file.getPath().indexOf("cacert") >= 0) {
                     var stack = get_stack_trace();
 //                    if (stack.indexOf("X509TrustManagerExtensions.checkServerTrusted") >= 0) {
                     if (stack.indexOf(".checkServerTrusted") >= 0) {
@@ -2624,4 +2644,32 @@ function move_to_foreground(pkg_name){
     }catch(e){
         console.error(e);
     }
+}
+
+var g_worker_class = null;
+
+function set_threadpool_worker(class_name){
+    g_worker_class = class_name;
+    console.log('worker class: '+g_worker_class);
+}
+
+function hook_threadpool_execute(){
+    let class_name = "java.util.concurrent.ThreadPoolExecutor";
+    let method_name = "execute";
+    var func = function(){
+        try{
+            let arg_class = get_real_class_name(arguments[0]);
+            if(g_worker_class && (g_worker_class == '*' || arg_class == g_worker_class)){
+                send_arguments_info(class_name+'.'+method_name+'()', arguments, false);
+            }
+        }catch(e){
+            console.error(e);
+        }
+        //调用原应用的方法
+        let ret = this[method_name].apply(this, arguments);
+        return ret;
+    }
+
+    hook_func_frame(class_name, method_name, func);
+    hook_func_frame(class_name, "runWorker", func);
 }

@@ -260,17 +260,19 @@ class FridaAgent:
         app_info = self.find_app(app)
         if app_info:
             identifier = app_info["identifier"]
+            version = app_info["version"]
             apk_path = self._get_apk_path(identifier)
+            apk_file = f'{identifier}-{version}.apk'
             if apk_path:
                 su_str = " " if len(self._device.id.split('.')) == 4 else " su -c "
-                cmd = f'adb -s {self._device.id} shell{su_str}"cp {apk_path} /sdcard/{identifier}.apk"'
+                cmd = f'adb -s {self._device.id} shell{su_str}"cp {apk_path} /sdcard/{apk_file}"'
                 exec_cmd(cmd, 30)
-                cmd = f'adb -s {self._device.id} pull /sdcard/{identifier}.apk"'
+                cmd = f'adb -s {self._device.id} pull /sdcard/{apk_file}"'
                 exec_cmd(cmd, 30)
-                cmd = f'adb -s {self._device.id} shell{su_str}"rm -f /sdcard/{identifier}.apk"'
+                cmd = f'adb -s {self._device.id} shell{su_str}"rm -f /sdcard/{apk_file}"'
                 exec_cmd(cmd, 30)
-                if os.path.exists(f'{identifier}.apk'):
-                    print(f'apk file saved in {clr_blue(abspath(identifier + ".apk"))}.')
+                if os.path.exists(apk_file):
+                    print(f'apk file saved in {clr_blue(abspath(apk_file))}.')
                 else:
                     print(clr_red('failed to the apk file.'))
             else:

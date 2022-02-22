@@ -79,6 +79,11 @@ class Scriptor:
         {'api': 'hookJsonParser', 'func': 'hook_json_parser', 'persistent': True, 'is_option': True,
          'help': 'hook several common JSON parser',
          'params': [{"name": "keyword", "type": "string", "isOptional": True}]},
+        {'api': 'hookThreadpoolExecute', 'func': 'hook_threadpool_execute', 'is_option': True, 'persistent': True,
+         'help': 'trace thread pool adding worker, use set_threadpool_worker to set the class of worker', 'params': []},
+        {'api': 'setThreadpoolWorker', 'func': 'set_threadpool_worker', 'is_option': True,
+         'help': 'set the class of worker that will execute by thread pool', 'persistent': False,
+         'params': [{"name": "class", "type": "string"}]},
         {'api': 'sslUnpinning', 'func': 'ssl_unpinning', 'persistent': True, 'is_option': True,
          'help': 'ssl unpinning powered by [git]WooyunDota/DroidSSLUnpinning, suggest to use --spawn to start the frida-hook'},
         {'api': 'bypassNoProxy', 'func': 'bypass_no_proxy', 'persistent': True, 'is_option': True,
@@ -169,6 +174,8 @@ class Scriptor:
         {'api': 'scanDex', 'func': 'scan_dex', 'persistent': False, 'is_option': False},
         {'api': 'hookLibArt', 'func': 'hook_lib_art', 'persistent': False, 'is_option': False},
         {'api': 'hookCertFile', 'func': 'hook_cert_file', 'persistent': False, 'is_option': False},
+        {'api': 'toggleCertFileState', 'func': 'toggle_cert_file_state', 'persistent': False, 'is_option': True,
+         'help': 'toggle the state of hook_cert_file function'},
         {'api': 'startTlsKeyLogger', 'func': 'start_tls_key_logger', 'persistent': False, 'is_option': False},
         {'api': 'findSo', 'func': 'find_so', 'persistent': False, 'is_option': False},
         {'api': 'getCurrentActivity', 'func': 'get_current_activity', 'persistent': False, 'is_option': False},
@@ -586,6 +593,7 @@ class Scriptor:
                 if value != '' or ('isOptional' in param_def.keys() and param_def['isOptional']):
                     params[name] = value
                     params_in_key.append(f'--{name} {value}')
+                    value = '' if type == "string" and value == 'null' else value
                     param_in_api = f'"{value}"' if type == "string" else value
                     params_in_api.append(param_in_api)
                 else:
