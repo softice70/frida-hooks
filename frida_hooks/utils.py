@@ -135,6 +135,18 @@ def get_app_version(device_id, name):
         return ""
 
 
+def get_host(device_id):
+    cmd = f'adb -s {device_id} shell "netcfg | grep wlan0"'
+    ret = exec_cmd(cmd, 2, False)
+    if ret is None:
+        return ""
+    matches = re.search(r"([\d]+\.[\d]+\.[\d]+\.[\d]+)", ret)
+    if matches is not None:
+        return matches.group(1)
+    else:
+        return ""
+
+
 def write_log(text):
     if isinstance(text, str):
         for key in ansi_colors.keys():

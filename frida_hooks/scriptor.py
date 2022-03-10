@@ -16,6 +16,7 @@ class ArgumentsErrorException(Exception): pass
 
 class Scriptor:
     _original_frida_cmds = [
+        {'func': 'get_ip', 'persistent': False, 'is_option': True, 'help': 'show ip of the device'},
         {'func': 'list_device', 'persistent': False, 'is_option': True, 'help': 'list the device'},
         {'func': 'list_app', 'persistent': False, 'is_option': True, 'help': 'list all installed applications'},
         {'func': 'list_process', 'persistent': False, 'is_option': True, 'help': 'list processes'},

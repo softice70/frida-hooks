@@ -140,6 +140,8 @@ class FridaAgent:
                     self._dump_so(script)
                 elif script['cmd'] == 'save_apk':
                     self.save_apk(self._app_package)
+                elif script['cmd'] == 'get_ip':
+                    self.get_ip()
                 elif script['cmd'] == 'list_app':
                     self.list_app(check_frida_server=False)
                 elif script['cmd'] == 'list_device':
@@ -205,6 +207,11 @@ class FridaAgent:
 
     def is_script_ok(self):
         return self._script and self._script.is_destroyed is False
+
+    def get_ip(self):
+        ip = get_host(self._device.id)
+        print(clr_yellow(ip))
+        return ip
 
     @staticmethod
     def list_device():
@@ -712,6 +719,8 @@ class FridaAgent:
             self.stop_frida_server()
         elif options.status_server:
             self.show_frida_server_status()
+        elif options.get_ip:
+            self.get_ip()
         elif options.list_device:
             self.list_device()
         elif options.list_app:
